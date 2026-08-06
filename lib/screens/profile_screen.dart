@@ -75,6 +75,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) showSnack(context, 'ID copied: ${u.uid}');
   }
 
+  Future<void> _topup(double amount) async {
+    try {
+      final result = await Api.topupWallet(amount);
+      if (!mounted) return;
+      showSnack(context, 'Wallet topped up! New balance: ${npr(result['balance'])}');
+      setState(() {});
+    } on ApiException catch (e) {
+      if (mounted) showSnack(context, e.message, error: true);
+    }
+  }
+
   String get _initials {
     final parts = (Api.user?.name ?? '?').trim().split(RegExp(r'\s+'));
     if (parts.length >= 2) {
@@ -227,9 +238,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _detailRow(Icons.email_outlined, 'Email', u.email),
                 _detailRow(Icons.work_outline, 'Role',
                     _roleLabel(u.role)),
-                if (u.createdAt.isNotEmpty)
-                  _detailRow(Icons.event_outlined, 'Member since',
-                      u.createdAt.substring(0, 10)),
+                 if (u.createdAt.isNotEmpty)
+                   _detailRow(Icons.event_outlined, 'Member since',
+                       u.createdAt.substring(0, 10)),
+                _detailRow(Icons.account_balance_wallet_rounded, 'Wallet balance', npr(u.walletBalance)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Wallet',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet_rounded, color: KbColors.green, size: 28),
+                    const SizedBox(width: 10),
+                    Text(npr(u.walletBalance),
+                        style: const TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.w800, color: KbColors.orange700)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Text('Top up your wallet to pay for orders instantly.',
+                    style: TextStyle(fontSize: 11.5, color: KbColors.inkFaint)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final amt in [100, 200, 500])
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: OutlinedButton(
+                            onPressed: () => _topup(amt.toDouble()),
+                            child: Text('₹$amt', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

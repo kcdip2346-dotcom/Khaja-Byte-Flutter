@@ -328,30 +328,37 @@ class CheckoutSheet extends StatefulWidget {
 class _CheckoutSheetState extends State<CheckoutSheet> {
   String _slot = '11:00 AM';
   String _method = 'card';
-  String? _scannedRef;
   bool _willingToDrink = false;
+  bool _useOwnCup = false;
+  int _redeemPoints = 0;
+  bool _showQR = false;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
   bool _loading = false;
-
-  bool get _needsPaymentFields => _method != 'cash';
 
   bool get _hasColdDrink => widget.cart.keys.any((id) {
         final item = widget.items.firstWhere((i) => i.id == id);
         return item.category == 'Beverages';
       });
 
-  String get _today => DateFormat('yyyy-MM-dd').format(DateTime.now());
+  bool get _hasBeverageWithOwnCup => widget.cart.keys.any((id) {
+        final item = widget.items.firstWhere((i) => i.id == id);
+        return item.category == 'Beverages' && item.ownCupPrice != null;
+      });
 
-  Future<void> _startScan() async {
-    final code = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const _QrScanPage()),
-    );
-    if (code != null && code.isNotEmpty && mounted) {
-      setState(() => _scannedRef = code);
-      showSnack(context, 'QR scanned! Payment reference captured.');
+  double get _effectiveSubtotal {
+    double total = 0;
+    for (final e in widget.cart.entries) {
+      final item = widget.items.firstWhere((i) => i.id == e.key);
+      final price = (_useOwnCup && item.ownCupPrice != null) ? item.ownCupPrice! : item.price;
+      total += price * e.value;
     }
+    return total;
   }
+
+  int get _maxRedeemPoints => Api.user?.walletBalance.toInt() ?? 0;
+
+  String get _today => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
   Future<void> _placeOrder() async {
     if (_hasColdDrink && !_willingToDrink) {
@@ -359,7 +366,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           error: true);
       return;
     }
-    if (_needsPaymentFields &&
+    if (_method != 'card' &&
         (_payName.text.trim().isEmpty || _payDetail.text.trim().isEmpty)) {
       showSnack(context, 'Please fill in your payment details.', error: true);
       return;
@@ -373,16 +380,19 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         _today,
         _slot,
         _method,
-        paymentName: _needsPaymentFields ? _payName.text.trim() : null,
-        paymentDetail: _needsPaymentFields ? _payDetail.text.trim() : null,
+        paymentName: _payName.text.trim(),
+        paymentDetail: _payDetail.text.trim(),
+        useOwnCup: _useOwnCup,
+        redeemPoints: _redeemPoints,
       );
       if (!mounted) return;
       Navigator.pop(context);
+      final walletUsed = result['wallet_used'] as double? ?? 0;
+      final queueWait = result['queue_wait'] as int? ?? 0;
+      final prepTime = result['prep_time'] as int? ?? 15;
       showSnack(
         context,
-        result['payment_status'] == 'paid'
-            ? 'Order placed & paid! ${kbRef(result['booking_id'] as int)} · ${result['txn_ref']}'
-            : 'Pre-booking received! Pay ${npr(result['total'] as num)} at the counter.',
+        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${walletUsed > 0 ? ' · ₹${walletUsed.toStringAsFixed(0)} from wallet' : ''}',
       );
       setState(() {});
     } on ApiException catch (e) {
@@ -504,53 +514,41 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 _payChip('card', '💳', 'Card'),
                 _payChip('esewa', '🟣', 'eSewa'),
                 _payChip('khalti', '🔵', 'Khalti'),
-                _payChip('cash', '💵', 'Cash'),
               ],
             ),
             const SizedBox(height: 14),
-            if (_hasColdDrink)
+            if (_hasBeverageWithOwnCup)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _willingToDrink
-                      ? KbColors.greenBg
-                      : KbColors.redBg,
+                  color: _useOwnCup ? KbColors.greenBg : KbColors.ivory100,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                      color: _willingToDrink
-                          ? const Color(0xFFBFE8CF)
-                          : const Color(0xFFF5B5B5)),
+                      color: _useOwnCup ? const Color(0xFFBFE8CF) : KbColors.ivory200),
                 ),
                 child: Row(
                   children: [
                     Checkbox(
-                      value: _willingToDrink,
-                      onChanged: (v) =>
-                          setState(() => _willingToDrink = v ?? false),
+                      value: _useOwnCup,
+                      onChanged: (v) => setState(() => _useOwnCup = v ?? false),
                       activeColor: KbColors.orange700,
                     ),
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _willingToDrink
-                                ? 'You\'re good to go! 🥤'
-                                : 'Cold drinks included — are you willing?',
+                            'Bringing my own cup 🥤',
                             style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
-                                color: _willingToDrink
-                                    ? KbColors.green
-                                    : KbColors.red),
+                                color: KbColors.green),
                           ),
-                          const SizedBox(height: 2),
-                           const Text(
-                             'Please confirm you\'re comfortable drinking chilled beverages.',
-                             style: TextStyle(
-                                 fontSize: 11,
-                                color: KbColors.inkSoft),
+                          Text(
+                            'Get discounted price on beverages',
+                            style: TextStyle(
+                                fontSize: 11, color: KbColors.inkSoft),
                           ),
                         ],
                       ),
@@ -558,46 +556,100 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   ],
                 ),
               ),
-            if (_needsPaymentFields) ...[
-              if (_method != 'card') ...[
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : _startScan,
-                  icon: const Icon(Icons.qr_code_scanner_rounded),
-                  label: Text(_scannedRef == null
-                      ? 'Scan QR to pay'
-                      : 'QR scanned ✓ Tap to rescan'),
+            if (_hasBeverageWithOwnCup) const SizedBox(height: 14),
+            if (_maxRedeemPoints > 0)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.ivory100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: KbColors.ivory200),
                 ),
-                if (_scannedRef != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: KbColors.greenBg,
-                      borderRadius: BorderRadius.circular(10),
-                      border:
-                          Border.all(color: const Color(0xFFBFE8CF)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const Text('Scanned payment QR',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: KbColors.inkFaint)),
-                        const SizedBox(height: 2),
-                        Text(_scannedRef!,
+                        const Icon(Icons.account_balance_wallet_rounded,
+                            size: 18, color: KbColors.green),
+                        const SizedBox(width: 6),
+                        Text('Use wallet balance (₹$_maxRedeemPoints)',
                             style: const TextStyle(
-                                fontSize: 12.5,
-                                color: KbColors.green,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'monospace')),
+                                fontWeight: FontWeight.w700, fontSize: 12.5)),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: _redeemPoints.toDouble(),
+                            min: 0,
+                            max: _maxRedeemPoints > 100 ? 100 : _maxRedeemPoints.toDouble(),
+                            divisions: _maxRedeemPoints > 100 ? 20 : (_maxRedeemPoints > 10 ? 10 : _maxRedeemPoints),
+                            onChanged: (v) => setState(() => _redeemPoints = v.round()),
+                            activeColor: KbColors.orange600,
+                          ),
+                        ),
+                        Text('₹$_redeemPoints',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            if (_maxRedeemPoints > 0) const SizedBox(height: 14),
+            if (_method != 'card') ...[
+              if (_showQR)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: KbColors.orange300),
                   ),
-                ],
-              ],
+                  child: Column(
+                    children: [
+                      const Text('Scan this QR to pay',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 13)),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          color: Colors.black12,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.qr_code_rounded,
+                                size: 120, color: KbColors.orange800),
+                            const SizedBox(height: 4),
+                            Text('KB-PAY-${_method.toUpperCase()}',
+                                style: const TextStyle(
+                                    fontSize: 10, fontFamily: 'monospace')),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('Show this to the canteen staff',
+                          style: TextStyle(
+                              fontSize: 11, color: KbColors.inkFaint)),
+                    ],
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => setState(() => _showQR = true),
+                  icon: const Icon(Icons.qr_code_rounded),
+                  label: Text('Show QR for $_method payment'),
+                ),
               const SizedBox(height: 14),
               TextFormField(
                 controller: _payName,
@@ -618,13 +670,20 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
               ),
             ] else ...[
-              const SizedBox(height: 12),
-              const Text(
-                '💵 Pay at the counter when you pick up. Booking creates a pending transaction.',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: KbColors.inkSoft,
-                    height: 1.5),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _payName,
+                decoration: const InputDecoration(
+                  labelText: 'Name on card',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _payDetail,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Card number',
+                ),
               ),
             ],
             const SizedBox(height: 18),
@@ -636,7 +695,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       height: 22,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2.5))
-                  : Text('✅ Place Order & Pay · ${npr(widget.subtotal)}'),
+                  : Text('✅ Place Order & Pay · ${npr(_effectiveSubtotal)}'),
             ),
           ],
         ),
@@ -693,7 +752,7 @@ class _QrScanPageState extends State<_QrScanPage> {
       appBar: AppBar(
         backgroundColor: KbColors.orange800,
         foregroundColor: Colors.white,
-        title: const Text('Scan QR to pay',
+        title: const Text('Scan Canteen QR',
             style: TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w800)),
       ),

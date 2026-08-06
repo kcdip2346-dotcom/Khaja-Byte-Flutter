@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../api.dart';
 import '../theme.dart';
@@ -13,12 +17,18 @@ class AdminMenuScreen extends StatefulWidget {
 
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   List<MenuItem>? _items;
+  List<Canteen>? _canteens;
   String? _error;
   final _name = TextEditingController();
   final _desc = TextEditingController();
   final _price = TextEditingController();
+  final _ownCupPrice = TextEditingController();
   final _image = TextEditingController();
+  final _prepTime = TextEditingController(text: '15');
+  final _dailyQty = TextEditingController(text: '0');
   String _category = 'Main Course';
+  int _canteenId = 1;
+  String? _photoPath;
   bool _adding = false;
 
   @override
@@ -30,14 +40,24 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   Future<void> _load() async {
     try {
       final items = await Api.getMenu();
+      final canteens = await Api.getCanteens();
       if (!mounted) return;
       setState(() {
         _items = items;
+        _canteens = canteens;
         _error = null;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+    }
+  }
+
+  Future<void> _pickPhoto() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 70);
+    if (picked != null) {
+      setState(() => _photoPath = picked.path);
     }
   }
 
@@ -50,18 +70,35 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     }
     setState(() => _adding = true);
     try {
+      String photoBase64 = '';
+      if (_photoPath != null) {
+        final bytes = await File(_photoPath!).readAsBytes();
+        photoBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      }
+      final ownCup = _ownCupPrice.text.trim().isNotEmpty ? double.tryParse(_ownCupPrice.text.trim()) : null;
+      final prepTime = int.tryParse(_prepTime.text.trim()) ?? 15;
+      final dailyQty = int.tryParse(_dailyQty.text.trim()) ?? 0;
       await Api.addMenuItem(
           _name.text.trim(),
           _category,
           _desc.text.trim(),
           price,
-          _image.text.trim().isEmpty ? '🍽️' : _image.text.trim());
+          _image.text.trim().isEmpty ? '🍽️' : _image.text.trim(),
+          photo: photoBase64,
+          ownCupPrice: ownCup,
+          canteenId: _canteenId,
+          prepTime: prepTime,
+          dailyQuantity: dailyQty);
       if (!mounted) return;
       showSnack(context, 'Menu item added.');
       _name.clear();
       _desc.clear();
       _price.clear();
+      _ownCupPrice.clear();
       _image.clear();
+      _prepTime.text = '15';
+      _dailyQty.text = '0';
+      _photoPath = null;
       await _load();
     } on ApiException catch (e) {
       if (mounted) showSnack(context, e.message, error: true);
@@ -149,17 +186,68 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   decoration: const InputDecoration(
                       labelText: 'Short description')),
               const SizedBox(height: 10),
-              TextField(
-                  controller: _price,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Price (NPR)',
-                      prefixText: 'रू ')),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                        controller: _price,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Price (NPR)',
+                            prefixText: 'रू ')),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                        controller: _ownCupPrice,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Own cup price',
+                            prefixText: 'रू ')),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                        controller: _prepTime,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Prep time (min)')),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                        controller: _dailyQty,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Daily qty (0=∞)')),
+                  ),
+                ],
+              ),
               const SizedBox(height: 10),
               TextField(
                   controller: _image,
                   decoration: const InputDecoration(
                       labelText: 'Emoji (e.g. 🍛)')),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<int>(
+                initialValue: _canteenId,
+                decoration: const InputDecoration(labelText: 'Canteen'),
+                items: [
+                  for (final c in _canteens ?? [])
+                    DropdownMenuItem(value: c.id, child: Text(c.name)),
+                ],
+                onChanged: (v) => setState(() => _canteenId = v ?? 1),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickPhoto,
+                icon: Icon(_photoPath != null ? Icons.check_circle : Icons.photo_camera),
+                label: Text(_photoPath != null ? 'Photo selected ✓' : 'Add photo'),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _adding ? null : _add,
@@ -216,12 +304,42 @@ class _AdminItemCardState extends State<_AdminItemCard> {
     }
   }
 
+  Widget _buildItemImage(MenuItem item) {
+    if (item.photo.isNotEmpty) {
+      if (item.photo.startsWith('data:')) {
+        try {
+          final bytes = base64Decode(item.photo.split(',')[1]);
+          return Image.memory(bytes, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _emojiFallback(item));
+        } catch (_) {
+          return _emojiFallback(item);
+        }
+      } else {
+        return Image.network(item.photo, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _emojiFallback(item));
+      }
+    }
+    return _emojiFallback(item);
+  }
+
+  Widget _emojiFallback(MenuItem item) {
+    return Container(
+      color: KbColors.ivory100,
+      alignment: Alignment.center,
+      child: Text(item.image, style: const TextStyle(fontSize: 22)),
+    );
+  }
+
   Future<void> _edit(BuildContext context) async {
     final name = TextEditingController(text: widget.item.name);
     final desc = TextEditingController(text: widget.item.description);
     final price =
         TextEditingController(text: widget.item.price.toStringAsFixed(0));
+    final ownCupPrice = TextEditingController(
+        text: widget.item.ownCupPrice?.toStringAsFixed(0) ?? '');
     final image = TextEditingController(text: widget.item.image);
+    final prepTime = TextEditingController(text: widget.item.prepTime.toString());
+    final dailyQty = TextEditingController(text: widget.item.dailyQuantity.toString());
     String category = widget.item.category;
 
     final saved = await showModalBottomSheet<bool>(
@@ -271,11 +389,45 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                     decoration: const InputDecoration(
                         labelText: 'Description')),
                 const SizedBox(height: 10),
-                TextField(
-                    controller: price,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: 'Price (NPR)', prefixText: 'रू ')),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                          controller: price,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Price (NPR)', prefixText: 'रू ')),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                          controller: ownCupPrice,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Own cup price', prefixText: 'रू ')),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                          controller: prepTime,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Prep time (min)')),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                          controller: dailyQty,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Daily qty (0=∞)')),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
                 TextField(
                     controller: image,
@@ -292,10 +444,16 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                       return;
                     }
                     try {
+                      final ownCup = ownCupPrice.text.trim().isNotEmpty
+                          ? double.tryParse(ownCupPrice.text.trim())
+                          : null;
                       await Api.editItem(widget.item.id, name.text.trim(),
                           category,
                           desc.text.trim(), p,
-                          image.text.trim().isEmpty ? '🍽️' : image.text.trim());
+                          image.text.trim().isEmpty ? '🍽️' : image.text.trim(),
+                          ownCupPrice: ownCup,
+                          prepTime: int.tryParse(prepTime.text.trim()) ?? 15,
+                          dailyQuantity: int.tryParse(dailyQty.text.trim()) ?? 0);
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     } on ApiException catch (e) {
                       if (!ctx.mounted) return;
@@ -360,19 +518,7 @@ class _AdminItemCardState extends State<_AdminItemCard> {
               child: SizedBox(
                 width: 50,
                 height: 50,
-                child: item.photo.isNotEmpty
-                    ? Image.network(item.photo,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                            color: KbColors.ivory100,
-                            alignment: Alignment.center,
-                            child: Text(item.image,
-                                style: const TextStyle(fontSize: 22))))
-                    : Container(
-                        color: KbColors.ivory100,
-                        alignment: Alignment.center,
-                        child: Text(item.image,
-                            style: const TextStyle(fontSize: 22))),
+                child: _buildItemImage(item),
               ),
             ),
             const SizedBox(width: 12),
@@ -384,9 +530,12 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 13.5)),
                   Text(
-                      '${item.category} · ${npr(item.price)}',
+                      '${item.category} · ${npr(item.price)}${item.ownCupPrice != null ? ' · 🥤${npr(item.ownCupPrice!)}' : ''}',
                       style: const TextStyle(
                           fontSize: 12, color: KbColors.inkSoft)),
+                  Text('Prep: ${item.prepTime}min · Qty: ${item.dailyQuantity == 0 ? '∞' : item.dailyQuantity}',
+                      style: const TextStyle(
+                          fontSize: 11, color: KbColors.inkFaint)),
                   const SizedBox(height: 4),
                   StatusBadge(_available ? 'Available' : 'Sold out'),
                 ],

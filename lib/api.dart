@@ -17,6 +17,7 @@ class User {
   final String email;
   final String role;
   final String uid;
+  final double walletBalance;
   final String createdAt;
   User({
     required this.id,
@@ -24,6 +25,7 @@ class User {
     required this.email,
     required this.role,
     this.uid = '',
+    this.walletBalance = 0,
     this.createdAt = '',
   });
 
@@ -33,6 +35,7 @@ class User {
         email: j['email'] as String,
         role: j['role'] as String,
         uid: (j['uid'] ?? '') as String,
+        walletBalance: (j['wallet_balance'] ?? 0).toDouble(),
         createdAt: (j['created_at'] ?? '') as String,
       );
   bool get isAdmin => role == 'admin';
@@ -45,6 +48,7 @@ class User {
       email: email,
       role: role,
       uid: uid,
+      walletBalance: walletBalance,
       createdAt: createdAt);
 
   Map<String, dynamic> toJson() => {
@@ -53,6 +57,7 @@ class User {
         'email': email,
         'role': role,
         'uid': uid,
+        'wallet_balance': walletBalance,
         'created_at': createdAt,
       };
 }
@@ -63,18 +68,26 @@ class MenuItem {
   final String category;
   final String description;
   final double price;
+  final double? ownCupPrice;
   final bool available;
   final String image;
   final String photo;
+  final int canteenId;
+  final int prepTime;
+  final int dailyQuantity;
   MenuItem({
     required this.id,
     required this.name,
     required this.category,
     required this.description,
     required this.price,
+    this.ownCupPrice,
     required this.available,
     required this.image,
     required this.photo,
+    this.canteenId = 1,
+    this.prepTime = 15,
+    this.dailyQuantity = 0,
   });
 
   factory MenuItem.fromJson(Map<String, dynamic> j) => MenuItem(
@@ -83,9 +96,13 @@ class MenuItem {
         category: j['category'] as String,
         description: (j['description'] ?? '') as String,
         price: (j['price'] as num).toDouble(),
+        ownCupPrice: (j['own_cup_price'] as num?)?.toDouble(),
         available: j['available'] as bool,
         image: (j['image'] ?? '') as String,
         photo: (j['photo'] ?? '') as String,
+        canteenId: (j['canteen_id'] ?? 1) as int,
+        prepTime: (j['prep_time'] ?? 15) as int,
+        dailyQuantity: (j['daily_quantity'] ?? 0) as int,
       );
 }
 
@@ -101,6 +118,7 @@ class Booking {
   final String? uname;
   final String? uemail;
   final String itemsJson;
+  final int canteenId;
   Booking({
     required this.id,
     required this.bookingDate,
@@ -113,6 +131,7 @@ class Booking {
     this.uname,
     this.uemail,
     this.itemsJson = '[]',
+    this.canteenId = 1,
   });
 
   factory Booking.fromJson(Map<String, dynamic> j) => Booking(
@@ -127,6 +146,7 @@ class Booking {
         uname: j['uname'] as String?,
         uemail: j['uemail'] as String?,
         itemsJson: (j['items_json'] ?? '[]') as String,
+        canteenId: (j['canteen_id'] ?? 1) as int,
       );
 
   bool get cancellable => status == 'pending' || status == 'confirmed';
@@ -173,6 +193,8 @@ class FeedbackItem {
   final String response;
   final String createdAt;
   final String? uname;
+  final String photo;
+  final int? bookingId;
   FeedbackItem({
     required this.id,
     required this.rating,
@@ -182,6 +204,8 @@ class FeedbackItem {
     required this.response,
     required this.createdAt,
     this.uname,
+    this.photo = '',
+    this.bookingId,
   });
 
   factory FeedbackItem.fromJson(Map<String, dynamic> j) => FeedbackItem(
@@ -193,6 +217,8 @@ class FeedbackItem {
         response: (j['response'] ?? '') as String,
         createdAt: (j['created_at'] ?? '') as String,
         uname: j['uname'] as String?,
+        photo: (j['photo'] ?? '') as String,
+        bookingId: j['booking_id'] as int?,
       );
 }
 
@@ -216,6 +242,67 @@ class Announcement {
         body: (j['body'] ?? '') as String,
         author: (j['author'] ?? '') as String,
         createdAt: (j['created_at'] ?? '') as String,
+      );
+}
+
+class Canteen {
+  final int id;
+  final String name;
+  final String location;
+  final String openTime;
+  final String closeTime;
+  final bool active;
+  Canteen({
+    required this.id,
+    required this.name,
+    required this.location,
+    required this.openTime,
+    required this.closeTime,
+    required this.active,
+  });
+
+  factory Canteen.fromJson(Map<String, dynamic> j) => Canteen(
+        id: j['id'] as int,
+        name: j['name'] as String,
+        location: j['location'] as String,
+        openTime: (j['open_time'] ?? '09:00') as String,
+        closeTime: (j['close_time'] ?? '17:00') as String,
+        active: (j['active'] ?? 1) == 1,
+      );
+}
+
+class Offer {
+  final int id;
+  final String title;
+  final String body;
+  final int discountPct;
+  final int? menuItemId;
+  final int canteenId;
+  final String startDate;
+  final String endDate;
+  final bool active;
+  Offer({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.discountPct,
+    this.menuItemId,
+    required this.canteenId,
+    required this.startDate,
+    required this.endDate,
+    required this.active,
+  });
+
+  factory Offer.fromJson(Map<String, dynamic> j) => Offer(
+        id: j['id'] as int,
+        title: j['title'] as String,
+        body: (j['body'] ?? '') as String,
+        discountPct: (j['discount_pct'] ?? 0) as int,
+        menuItemId: j['menu_item_id'] as int?,
+        canteenId: (j['canteen_id'] ?? 1) as int,
+        startDate: (j['start_date'] ?? '') as String,
+        endDate: (j['end_date'] ?? '') as String,
+        active: (j['active'] ?? 1) == 1,
       );
 }
 
@@ -339,6 +426,32 @@ class Api {
     }
   }
 
+  static Future<dynamic> _put(String path, [Map<String, dynamic>? body]) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(json: true),
+        body: body == null ? null : jsonEncode(body),
+      );
+      return _handle(res);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Could not reach the server. Is the backend running? ($e)');
+    }
+  }
+
+  static Future<dynamic> _delete(String path) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl$path'), headers: _headers());
+      return _handle(res);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Could not reach the server. Is the backend running? ($e)');
+    }
+  }
+
   static dynamic _handle(http.Response res) {
     dynamic data;
     try {
@@ -432,8 +545,9 @@ class Api {
     return user!;
   }
 
-  static Future<List<MenuItem>> getMenu() async {
-    final d = await _get('/api/menu');
+  static Future<List<MenuItem>> getMenu({int? canteenId}) async {
+    final path = canteenId != null ? '/api/menu?canteen_id=$canteenId' : '/api/menu';
+    final d = await _get(path);
     return (d['items'] as List)
         .map((e) => MenuItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -446,6 +560,40 @@ class Api {
         .toList();
   }
 
+  static Future<List<Canteen>> getCanteens() async {
+    final d = await _get('/api/canteens');
+    return (d['canteens'] as List)
+        .map((e) => Canteen.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<Offer>> getOffers() async {
+    final d = await _get('/api/offers');
+    return (d['offers'] as List)
+        .map((e) => Offer.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Map<String, dynamic>> getPoints() async {
+    return (await _get('/api/wallet')) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> topupWallet(double amount) async {
+    return (await _post('/api/wallet/topup', {'amount': amount})) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> getNotifications() async {
+    return (await _get('/api/notifications')) as Map<String, dynamic>;
+  }
+
+  static Future<void> markNotificationRead(int id) async {
+    await _post('/api/notifications/$id/read');
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    await _post('/api/notifications/read-all');
+  }
+
   static Future<Map<String, dynamic>> placeOrder(
     List<Map<String, int>> items,
     String bookingDate,
@@ -453,6 +601,9 @@ class Api {
     String method, {
     String? paymentName,
     String? paymentDetail,
+    int canteenId = 1,
+    bool useOwnCup = false,
+    int redeemPoints = 0,
   }) async {
     return (await _post('/api/order', {
       'items': items,
@@ -461,6 +612,9 @@ class Api {
       'method': method,
       if (paymentName != null) 'payment_name': paymentName,
       if (paymentDetail != null) 'payment_detail': paymentDetail,
+      'canteen_id': canteenId,
+      'use_own_cup': useOwnCup,
+      'redeem_points': redeemPoints,
     })) as Map<String, dynamic>;
   }
 
@@ -495,11 +649,14 @@ class Api {
   }
 
   static Future<Map<String, dynamic>> postFeedback(
-      int rating, String comment, bool hygiene) async {
+      int rating, String comment, bool hygiene,
+      {String photo = '', int? bookingId}) async {
     return (await _post('/api/feedback', {
       'rating': rating,
       'comment': comment,
       'hygiene_issue': hygiene,
+      'photo': photo,
+      if (bookingId != null) 'booking_id': bookingId,
     })) as Map<String, dynamic>;
   }
 
@@ -531,13 +688,20 @@ class Api {
   }
 
   static Future<void> addMenuItem(String name, String category, String desc,
-      double price, String image) async {
+      double price, String image,
+      {String photo = '', double? ownCupPrice, int canteenId = 1,
+      int prepTime = 15, int dailyQuantity = 0}) async {
     await _post('/api/admin/menu', {
       'name': name,
       'category': category,
       'description': desc,
       'price': price,
       'image': image,
+      'photo': photo,
+      'own_cup_price': ownCupPrice,
+      'canteen_id': canteenId,
+      'prep_time': prepTime,
+      'daily_quantity': dailyQuantity,
     });
   }
 
@@ -547,18 +711,84 @@ class Api {
   }
 
   static Future<void> editItem(int id, String name, String category,
-      String desc, double price, String image) async {
+      String desc, double price, String image,
+      {String photo = '', double? ownCupPrice,
+      int prepTime = 15, int dailyQuantity = 0}) async {
     await _post('/api/admin/menu/$id/edit', {
       'name': name,
       'category': category,
       'description': desc,
       'price': price,
       'image': image,
+      'photo': photo,
+      'own_cup_price': ownCupPrice,
+      'prep_time': prepTime,
+      'daily_quantity': dailyQuantity,
     });
   }
 
   static Future<void> deleteItem(int id) async {
     await _post('/api/admin/menu/$id/delete');
+  }
+
+  static Future<List<Offer>> getAdminOffers() async {
+    final d = await _get('/api/admin/offers');
+    return (d['offers'] as List)
+        .map((e) => Offer.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> addOffer(String title, String body, int discountPct,
+      {int? menuItemId, int canteenId = 1,
+      String startDate = '', String endDate = ''}) async {
+    await _post('/api/admin/offers', {
+      'title': title,
+      'body': body,
+      'discount_pct': discountPct,
+      'menu_item_id': menuItemId,
+      'canteen_id': canteenId,
+      'start_date': startDate,
+      'end_date': endDate,
+    });
+  }
+
+  static Future<void> updateOffer(int id, String title, String body,
+      int discountPct, {int? menuItemId, int canteenId = 1,
+      String startDate = '', String endDate = '', int active = 1}) async {
+    await _put('/api/admin/offers/$id', {
+      'title': title,
+      'body': body,
+      'discount_pct': discountPct,
+      'menu_item_id': menuItemId,
+      'canteen_id': canteenId,
+      'start_date': startDate,
+      'end_date': endDate,
+      'active': active,
+    });
+  }
+
+  static Future<void> deleteOffer(int id) async {
+    await _delete('/api/admin/offers/$id');
+  }
+
+  static Future<Map<String, dynamic>> getSettings() async {
+    return (await _get('/api/admin/settings')) as Map<String, dynamic>;
+  }
+
+  static Future<void> updateSettings(Map<String, dynamic> settings) async {
+    await _post('/api/admin/settings', settings);
+  }
+
+  static Future<void> updateCanteenHours(int canteenId, String openTime, String closeTime) async {
+    await _post('/api/settings/hours', {
+      'canteen_id': canteenId,
+      'open_time': openTime,
+      'close_time': closeTime,
+    });
+  }
+
+  static Future<Map<String, dynamic>> getCanteenHours(int canteenId) async {
+    return (await _get('/api/settings/hours?canteen_id=$canteenId')) as Map<String, dynamic>;
   }
 
   static Future<List<FeedbackItem>> getAdminFeedback() async {

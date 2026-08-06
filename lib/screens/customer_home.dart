@@ -16,11 +16,13 @@ class CustomerHome extends StatefulWidget {
 
 class _CustomerHomeState extends State<CustomerHome> {
   late Future<List<Announcement>> _anns;
+  late Future<List<Offer>> _offers;
 
   @override
   void initState() {
     super.initState();
     _anns = Api.getAnnouncements();
+    _offers = Api.getOffers();
   }
 
   @override
@@ -32,12 +34,22 @@ class _CustomerHomeState extends State<CustomerHome> {
         : u?.role == 'admin'
             ? 'Admin'
             : 'Student';
+    final points = u?.walletBalance ?? 0;
     return Scaffold(
       appBar: KbAppBar(
         title: 'Namaste, $name!',
         subtitle:
             '${DateFormat('EEEE, MMM d').format(DateTime.now())} · $role · ${u?.uid ?? ''}',
         actions: [
+          if (points > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Chip(
+                avatar: const Icon(Icons.account_balance_wallet_rounded, size: 16, color: KbColors.green),
+                label: Text(npr(points), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                backgroundColor: KbColors.ivory100,
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.logout, color: KbColors.orange700),
             tooltip: 'Logout',
@@ -91,6 +103,80 @@ class _CustomerHomeState extends State<CustomerHome> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            FutureBuilder<List<Offer>>(
+              future: _offers,
+              builder: (context, snap) {
+                if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
+                final offers = snap.data!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SectionHeader(
+                        icon: Icons.local_offer_outlined, title: 'Today\'s specials'),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: offers.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (context, i) {
+                          final o = offers[i];
+                          return Container(
+                            width: 200,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [KbColors.orange700, KbColors.orange500],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(o.title,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14)),
+                                if (o.body.isNotEmpty)
+                                  Text(o.body,
+                                      style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.9),
+                                          fontSize: 11),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                Row(
+                                  children: [
+                                    if (o.discountPct > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text('${o.discountPct}% OFF',
+                                            style: const TextStyle(
+                                                color: KbColors.orange800,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 11)),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             const SectionHeader(

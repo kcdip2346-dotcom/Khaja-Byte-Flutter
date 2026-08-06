@@ -230,7 +230,8 @@ class _AdminBookingCard extends StatelessWidget {
                         color: KbColors.orange700)),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(b.uname ?? '',
+                  child: Text(
+                      b.customerName.isNotEmpty ? b.customerName : (b.uname ?? ''),
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 13),
                       overflow: TextOverflow.ellipsis),

@@ -119,6 +119,7 @@ class Booking {
   final String? uemail;
   final String itemsJson;
   final int canteenId;
+  final String customerName;
   Booking({
     required this.id,
     required this.bookingDate,
@@ -132,6 +133,7 @@ class Booking {
     this.uemail,
     this.itemsJson = '[]',
     this.canteenId = 1,
+    this.customerName = '',
   });
 
   factory Booking.fromJson(Map<String, dynamic> j) => Booking(
@@ -147,6 +149,7 @@ class Booking {
         uemail: j['uemail'] as String?,
         itemsJson: (j['items_json'] ?? '[]') as String,
         canteenId: (j['canteen_id'] ?? 1) as int,
+        customerName: (j['customer_name'] ?? '') as String,
       );
 
   bool get cancellable => status == 'pending' || status == 'confirmed';
@@ -604,6 +607,7 @@ class Api {
     int canteenId = 1,
     bool useOwnCup = false,
     int redeemPoints = 0,
+    String? customerName,
   }) async {
     return (await _post('/api/order', {
       'items': items,
@@ -615,6 +619,7 @@ class Api {
       'canteen_id': canteenId,
       'use_own_cup': useOwnCup,
       'redeem_points': redeemPoints,
+      if (customerName != null) 'customer_name': customerName,
     })) as Map<String, dynamic>;
   }
 

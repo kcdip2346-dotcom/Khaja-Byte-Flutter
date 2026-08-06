@@ -334,6 +334,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   bool _showQR = false;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
+  final _customerName = TextEditingController();
   bool _loading = false;
 
   bool get _hasColdDrink => widget.cart.keys.any((id) {
@@ -384,6 +385,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         paymentDetail: _payDetail.text.trim(),
         useOwnCup: _useOwnCup,
         redeemPoints: _redeemPoints,
+        customerName: _customerName.text.trim().isNotEmpty
+            ? _customerName.text.trim()
+            : null,
       );
       if (!mounted) return;
       Navigator.pop(context);
@@ -499,6 +503,16 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               '📌 Pre-bookings are only accepted for today — same-day pickup.',
               style: TextStyle(
                   fontSize: 12, color: KbColors.inkSoft, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _customerName,
+              decoration: const InputDecoration(
+                labelText: 'Name on order (optional)',
+                prefixIcon: Icon(Icons.person_outline,
+                    color: KbColors.orange600, size: 20),
+                hintText: 'Different name for this order',
+              ),
             ),
             const SizedBox(height: 16),
             const Text('Payment method',

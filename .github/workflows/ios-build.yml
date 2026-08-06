@@ -1,0 +1,37 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-flutter@v2
+        with:
+          flutter-version: '3.44.8'
+
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods
+          pod setup
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          cd ios && pod install --repo-update && cd ..
+
+      - name: Build IPA
+        run: |
+          flutter build ipa --release \
+            --dart-define=API_HOST=khaja-byte.onrender.com
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: khaja-byte-ios
+          path: build/ios/ipa/*.ipa

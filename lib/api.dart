@@ -17,7 +17,7 @@ class User {
   final String email;
   final String role;
   final String uid;
-  final double walletBalance;
+  final int creditPoints;
   final String createdAt;
   User({
     required this.id,
@@ -25,7 +25,7 @@ class User {
     required this.email,
     required this.role,
     this.uid = '',
-    this.walletBalance = 0,
+    this.creditPoints = 0,
     this.createdAt = '',
   });
 
@@ -35,7 +35,7 @@ class User {
         email: j['email'] as String,
         role: j['role'] as String,
         uid: (j['uid'] ?? '') as String,
-        walletBalance: (j['wallet_balance'] ?? 0).toDouble(),
+        creditPoints: (j['credit_points'] ?? 0) as int,
         createdAt: (j['created_at'] ?? '') as String,
       );
   bool get isAdmin => role == 'admin';
@@ -48,7 +48,7 @@ class User {
       email: email,
       role: role,
       uid: uid,
-      walletBalance: walletBalance,
+      creditPoints: creditPoints,
       createdAt: createdAt);
 
   Map<String, dynamic> toJson() => {
@@ -57,7 +57,7 @@ class User {
         'email': email,
         'role': role,
         'uid': uid,
-        'wallet_balance': walletBalance,
+        'credit_points': creditPoints,
         'created_at': createdAt,
       };
 }
@@ -578,11 +578,7 @@ class Api {
   }
 
   static Future<Map<String, dynamic>> getPoints() async {
-    return (await _get('/api/wallet')) as Map<String, dynamic>;
-  }
-
-  static Future<Map<String, dynamic>> topupWallet(double amount) async {
-    return (await _post('/api/wallet/topup', {'amount': amount})) as Map<String, dynamic>;
+    return (await _get('/api/points')) as Map<String, dynamic>;
   }
 
   static Future<Map<String, dynamic>> getNotifications() async {

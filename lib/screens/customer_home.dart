@@ -34,7 +34,7 @@ class _CustomerHomeState extends State<CustomerHome> {
         : u?.role == 'admin'
             ? 'Admin'
             : 'Student';
-    final points = u?.walletBalance ?? 0;
+    final points = u?.creditPoints ?? 0;
     return Scaffold(
       appBar: KbAppBar(
         title: 'Namaste, $name!',
@@ -45,8 +45,8 @@ class _CustomerHomeState extends State<CustomerHome> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
-                avatar: const Icon(Icons.account_balance_wallet_rounded, size: 16, color: KbColors.green),
-                label: Text(npr(points), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                avatar: const Icon(Icons.stars_rounded, size: 16, color: KbColors.amber),
+                label: Text('$points pts', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                 backgroundColor: KbColors.ivory100,
               ),
             ),
@@ -105,6 +105,23 @@ class _CustomerHomeState extends State<CustomerHome> {
               ),
             ),
             const SizedBox(height: 16),
+            // Combo deals section
+            const SectionHeader(
+                icon: Icons.local_offer_outlined, title: 'Combo deals'),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 130,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _comboCard('Mo:Mo + Drink', 'Any Mo:Mo + beverage at ₹199', '🥟🥤', KbColors.orange700),
+                  _comboCard('Rice Bowl Combo', 'Rice + curry + pickle at ₹175', '🍚', KbColors.green),
+                  _comboCard('Pasta Special', 'Any pasta + garlic bread at ₹299', '🍝', KbColors.amber),
+                  _comboCard('Snack Pack', 'Fries + popcorn + drink at ₹250', '🍟', KbColors.blue),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
             FutureBuilder<List<Offer>>(
               future: _offers,
               builder: (context, snap) {
@@ -242,6 +259,43 @@ class _CustomerHomeState extends State<CustomerHome> {
           ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _comboCard(String title, String subtitle, String emoji, Color color) {
+    return Container(
+      width: 140,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color, color.withValues(alpha: 0.7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 24)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13)),
+              Text(subtitle,
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 10)),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -357,7 +357,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     return total;
   }
 
-  int get _maxRedeemPoints => Api.user?.walletBalance.toInt() ?? 0;
+  int get _maxRedeemPoints => Api.user?.creditPoints ?? 0;
 
   String get _today => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -391,12 +391,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       );
       if (!mounted) return;
       Navigator.pop(context);
-      final walletUsed = result['wallet_used'] as double? ?? 0;
+      final ptsEarned = result['points_earned'] as int? ?? 0;
+      final ptsRedeemed = result['points_redeemed'] as int? ?? 0;
       final queueWait = result['queue_wait'] as int? ?? 0;
       final prepTime = result['prep_time'] as int? ?? 15;
       showSnack(
         context,
-        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${walletUsed > 0 ? ' · ₹${walletUsed.toStringAsFixed(0)} from wallet' : ''}',
+        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${ptsEarned > 0 ? ' · +$ptsEarned pts' : ''}${ptsRedeemed > 0 ? ' · -$ptsRedeemed pts' : ''}',
       );
       setState(() {});
     } on ApiException catch (e) {
@@ -588,7 +589,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                         const Icon(Icons.account_balance_wallet_rounded,
                             size: 18, color: KbColors.green),
                         const SizedBox(width: 6),
-                        Text('Use wallet balance (₹$_maxRedeemPoints)',
+                        Text('Use credit points ($_maxRedeemPoints available)',
                             style: const TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 12.5)),
                       ],

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'topup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.embedded = false});
@@ -29,6 +30,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _name.text = Api.user?.name ?? '';
+    _refreshBalance();
+  }
+
+  Future<void> _refreshBalance() async {
+    try {
+      final credits = await Api.getCredits();
+      if (!mounted) return;
+      final bal = (credits['balance'] as num?)?.toDouble();
+      if (bal != null && Api.user != null) {
+        Api.user = Api.user!.copyWithCreditBalance(bal);
+        setState(() {});
+      }
+    } catch (_) {}
+  }
+
+  void _openTopup() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) =>
+            TopupScreen(onBalanceChanged: _refreshBalance)));
   }
 
   Future<void> _saveName() async {
@@ -212,6 +232,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 14),
         Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [KbColors.orange800, KbColors.orange500],
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.account_balance_wallet_rounded,
+                      color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('WALLET',
+                          style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 1.3,
+                              fontWeight: FontWeight.w800,
+                              color: KbColors.orange200)),
+                      const SizedBox(height: 2),
+                      Text(npr(Api.user!.creditBalance),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900)),
+                      const Text('NPR credits · pay from wallet at checkout',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: KbColors.orange200)),
+                    ],
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _openTopup,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: KbColors.orange800,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30)),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Top up',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _policiesCard(),
+        const SizedBox(height: 14),
+        Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -230,73 +321,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                  if (u.createdAt.isNotEmpty)
                    _detailRow(Icons.event_outlined, 'Member since',
                        u.createdAt.substring(0, 10)),
-                _detailRow(Icons.stars_rounded, 'Credit points', '${u.creditPoints} pts'),
               ],
             ),
           ),
         ),
         const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Credit points',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.stars_rounded, color: KbColors.amber, size: 28),
-                    const SizedBox(width: 10),
-                    Text('${u.creditPoints} pts',
-                        style: const TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.w800, color: KbColors.orange700)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text('Earn 1 point per ₹10 spent. Redeem at checkout for discounts.',
-                    style: TextStyle(fontSize: 11.5, color: KbColors.inkFaint)),
-              ],
+        if (u.isAdmin) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Update name',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(
+                        labelText: 'Full name',
+                        prefixIcon: Icon(Icons.edit_outlined,
+                            size: 20, color: KbColors.orange600)),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _savingName ? null : _saveName,
+                    icon: _savingName
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check, size: 18),
+                    label: Text(_savingName ? 'Saving…' : 'Save name'),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Update name',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _name,
-                  decoration: const InputDecoration(
-                      labelText: 'Full name',
-                      prefixIcon: Icon(Icons.edit_outlined,
-                          size: 20, color: KbColors.orange600)),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: _savingName ? null : _saveName,
-                  icon: _savingName
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check, size: 18),
-                  label: Text(_savingName ? 'Saving…' : 'Save name'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
+          const SizedBox(height: 14),
+        ],
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -491,6 +556,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _policiesCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: KbColors.orange200.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.gavel_rounded, size: 18, color: KbColors.orange700),
+                  SizedBox(width: 8),
+                  Text('Policies — ordering & cancellation',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+            _policyTile(
+              Icons.assignment_turned_in_outlined,
+              'Pre-ordering',
+              'Pre-order only during cafeteria operating hours and for items '
+                  'available at the time of ordering. Review your cart '
+                  'carefully — you are responsible for the items, quantities '
+                  'and pickup time you choose.',
+            ),
+            _policyTile(
+              Icons.timer_outlined,
+              'Cancellation window (7 minutes)',
+              'You may cancel a pre-order within 7 minutes of placing it, '
+                  'before preparation begins — paid orders are auto-refunded. '
+                  'Once the window passes or cooking starts, the order is '
+                  'final: no cancellation, modification or refund.',
+            ),
+            _policyTile(
+              Icons.inventory_2_outlined,
+              'Unclaimed orders (30 minutes)',
+              'Collect your order at the chosen pickup time. Orders left '
+                  'unclaimed for more than 30 minutes after pickup time may be '
+                  'discarded for food safety — no refunds, replacements or '
+                  'credits for uncollected orders.',
+            ),
+            _policyTile(
+              Icons.medical_information_outlined,
+              'Allergies',
+              'Check item ingredients before ordering. Meals are prepared in '
+                  'a shared kitchen, so cross-contamination cannot be fully '
+                  'ruled out — talk to canteen staff if you have severe '
+                  'allergies.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _policyTile(IconData icon, String title, String body) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      dense: true,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      leading: Icon(icon, size: 20, color: KbColors.orange600),
+      title: Text(title,
+          style: const TextStyle(
+              fontSize: 13.5, fontWeight: FontWeight.w700)),
+      childrenPadding: const EdgeInsets.only(bottom: 12, left: 32),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(body,
+              style: const TextStyle(
+                  fontSize: 12, height: 1.5, color: KbColors.inkSoft)),
+        ),
+      ],
     );
   }
 

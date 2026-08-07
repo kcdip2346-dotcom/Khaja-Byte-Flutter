@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../widgets.dart';
 import 'bookings_screen.dart';
 import 'customer_home.dart';
 import 'feedback_screen.dart';
 import 'menu_screen.dart';
+import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
 class CustomerShell extends StatefulWidget {
@@ -20,22 +22,32 @@ class CustomerShell extends StatefulWidget {
 class _CustomerShellState extends State<CustomerShell> {
   int _index = 0;
   int _unreadNotifs = 0;
+  int _lastUnread = 0;
   Timer? _pollTimer;
-  String _lastStatus = '';
+  final Map<int, String> _statusMap = {};
+  final _bookingsKey = GlobalKey<BookingsScreenState>();
 
-  final _screens = [
-    const CustomerHome(),
-    const MenuScreen(),
-    const BookingsScreen(),
-    const FeedbackScreen(),
-    const ProfileScreen(),
-  ];
+  List<Widget> get _screens => [
+        CustomerHome(
+          unreadNotifs: _unreadNotifs,
+          onOpenAlerts: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => const NotificationsScreen())),
+        ),
+        const MenuScreen(),
+        BookingsScreen(key: _bookingsKey),
+        const FeedbackScreen(),
+        const ProfileScreen(),
+      ];
 
   @override
   void initState() {
     super.initState();
     _loadNotifications();
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pollOrderStatus());
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _pollOrderStatus();
+      _pollNotifications();
+    });
   }
 
   @override
@@ -48,8 +60,32 @@ class _CustomerShellState extends State<CustomerShell> {
     try {
       final data = await Api.getNotifications();
       if (mounted) {
-        setState(() => _unreadNotifs = (data['unread'] as int? ?? 0));
+        setState(() {
+          _unreadNotifs = data['unread'] as int? ?? 0;
+          _lastUnread = _unreadNotifs;
+        });
       }
+    } catch (_) {}
+  }
+
+  Future<void> _pollNotifications() async {
+    try {
+      final data = await Api.getNotifications();
+      if (!mounted) return;
+      final unread = data['unread'] as int? ?? 0;
+      final fresh = (data['notifications'] as List<dynamic>? ?? [])
+          .where((n) => (n['read'] ?? 0) != 1)
+          .toList();
+      if (unread > _lastUnread && fresh.isNotEmpty) {
+        final n = fresh.first;
+        showTopToast(context, '${n['title']} — ${n['body']}',
+            icon: Icons.notifications_active_rounded,
+            color: KbColors.orange700);
+        setState(() => _unreadNotifs = unread);
+      } else if (unread != _unreadNotifs) {
+        setState(() => _unreadNotifs = unread);
+      }
+      _lastUnread = unread;
     } catch (_) {}
   }
 
@@ -57,49 +93,52 @@ class _CustomerShellState extends State<CustomerShell> {
     try {
       final bookings = await Api.getBookings();
       if (bookings.isEmpty) return;
-      final latest = bookings.first;
-      if (_lastStatus.isNotEmpty && _lastStatus != latest.status) {
-        if (latest.status == 'completed') {
-          _showOrderReadyDialog(latest.id, latest.itemSummary);
+      // Detect status changes on ANY booking, not just the latest.
+      for (final b in bookings) {
+        if (b.status == 'pending' || b.status == 'completed' ||
+            b.status == 'cancelled' || b.status == 'confirmed') {
+          final prev = _statusMap[b.id];
+          if (prev != null && prev != b.status) {
+            _onStatusChange(b);
+          }
+          _statusMap[b.id] = b.status;
         }
       }
-      _lastStatus = latest.status;
+      _bookingsKey.currentState?.reload();
     } catch (_) {}
   }
 
-  void _showOrderReadyDialog(int bookingId, String items) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: KbColors.greenBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 24),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text('Order Ready! 🎉', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            ),
-          ],
-        ),
-        content: Text('Your order KB-${bookingId.toString().padLeft(4, '0')} ($items) is ready for pickup!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got it!'),
-          ),
-        ],
-      ),
-    );
+  void _onStatusChange(Booking b) {
+    switch (b.status) {
+      case 'confirmed':
+        showTopToast(
+          context,
+          '${kbRef(b.id)} confirmed — ${b.itemSummary}. '
+              'Ready in ~${b.totalTime} min (${b.queueWait} min queue).',
+          icon: Icons.check_circle_rounded,
+          color: KbColors.blue,
+          durationMs: 3200,
+        );
+        break;
+      case 'completed':
+        showTopToast(
+          context,
+          '${kbRef(b.id)} is ready for pickup! ${b.itemSummary}',
+          icon: Icons.celebration_rounded,
+          color: KbColors.green,
+          durationMs: 3800,
+        );
+        break;
+      case 'cancelled':
+        showTopToast(
+          context,
+          '${kbRef(b.id)} was cancelled. Credits will be refunded.',
+          icon: Icons.cancel_rounded,
+          color: KbColors.red,
+        );
+        break;
+    }
+    _loadNotifications();
   }
 
   @override
@@ -114,35 +153,27 @@ class _CustomerShellState extends State<CustomerShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
-          const NavigationDestination(
+        destinations: const [
+          NavigationDestination(
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home_rounded),
               label: 'Home'),
-          const NavigationDestination(
+          NavigationDestination(
               icon: Icon(Icons.restaurant_menu_outlined),
               selectedIcon: Icon(Icons.restaurant_menu),
               label: 'Menu'),
-          const NavigationDestination(
+          NavigationDestination(
               icon: Icon(Icons.calendar_month_outlined),
               selectedIcon: Icon(Icons.calendar_month),
               label: 'Bookings'),
-          const NavigationDestination(
+          NavigationDestination(
               icon: Icon(Icons.feedback_outlined),
               selectedIcon: Icon(Icons.feedback),
               label: 'Feedback'),
           NavigationDestination(
-              icon: Badge(
-                label: Text('$_unreadNotifs'),
-                isLabelVisible: _unreadNotifs > 0,
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              selectedIcon: Badge(
-                label: Text('$_unreadNotifs'),
-                isLabelVisible: _unreadNotifs > 0,
-                child: const Icon(Icons.notifications),
-              ),
-              label: 'Alerts'),
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Profile'),
         ],
       ),
     );

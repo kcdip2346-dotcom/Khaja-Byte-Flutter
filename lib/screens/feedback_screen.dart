@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,7 +8,8 @@ import '../theme.dart';
 import '../widgets.dart';
 
 class FeedbackScreen extends StatefulWidget {
-  const FeedbackScreen({super.key});
+  final int? initialBookingId;
+  const FeedbackScreen({super.key, this.initialBookingId});
 
   @override
   State<FeedbackScreen> createState() => _FeedbackScreenState();
@@ -31,13 +31,20 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     super.initState();
     _mine = Api.getMyFeedback();
     _myBookings = Api.getBookings();
+    if (widget.initialBookingId != null) {
+      _feedbackType = 'per_order';
+      _selectedBookingId = widget.initialBookingId;
+    }
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 800, maxHeight: 800, imageQuality: 70);
     if (picked != null) {
-      setState(() => _photoPath = picked.path);
+      final bytes = await picked.readAsBytes();
+      if (mounted) {
+        setState(() => _photoPath = base64Encode(bytes));
+      }
     }
   }
 
@@ -52,14 +59,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     }
     setState(() => _submitting = true);
     try {
-      String photoBase64 = '';
-      if (_photoPath != null) {
-        final bytes = await File(_photoPath!).readAsBytes();
-        photoBase64 = base64Encode(bytes);
-      }
       await Api.postFeedback(
           _rating, _comment.text.trim(), _hygiene,
-          photo: photoBase64,
+          photo: _photoPath ?? '',
           bookingId: _feedbackType == 'per_order' ? _selectedBookingId : null);
       if (!mounted) return;
       showSnack(context, 'Thank you! Your feedback helps keep Khājā Byte clean & fair.');
@@ -148,19 +150,75 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                     FutureBuilder<List<Booking>>(
                       future: _myBookings,
                       builder: (context, snap) {
-                        if (!snap.hasData) return const CircularProgressIndicator();
-                        final bookings = snap.data!;
-                        if (bookings.isEmpty) {
-                          return const Text('No bookings to review.', style: TextStyle(fontSize: 12, color: KbColors.inkFaint));
+                        if (snap.connectionState != ConnectionState.done) {
+                          return const Center(
+                              child: Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: CircularProgressIndicator(
+                                      color: KbColors.orange600)));
                         }
-                        return DropdownButtonFormField<int>(
-                          initialValue: _selectedBookingId,
-                          decoration: const InputDecoration(labelText: 'Select order'),
-                          items: bookings.map((b) => DropdownMenuItem(
-                            value: b.id,
-                            child: Text('${b.itemSummary} · ${b.bookingDate}', style: const TextStyle(fontSize: 12)),
-                          )).toList(),
-                          onChanged: (v) => setState(() => _selectedBookingId = v),
+                        final bookings = snap.data ?? [];
+                        if (bookings.isEmpty) {
+                          return const Text('No bookings to review.',
+                              style: TextStyle(
+                                  fontSize: 12, color: KbColors.inkFaint));
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Select the order to review',
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            for (final b in bookings)
+                              Card(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                color: _selectedBookingId == b.id
+                                    ? KbColors.orange200
+                                    : null,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(
+                                    color: _selectedBookingId == b.id
+                                        ? KbColors.orange500
+                                        : KbColors.ivory200,
+                                  ),
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => setState(
+                                      () => _selectedBookingId = b.id),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          _selectedBookingId == b.id
+                                              ? Icons.radio_button_checked
+                                              : Icons.radio_button_off,
+                                          size: 18,
+                                          color: _selectedBookingId == b.id
+                                              ? KbColors.orange700
+                                              : KbColors.inkFaint,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${kbRef(b.id)} · ${b.itemSummary}\n${b.bookingDate} · ${b.timeSlot}',
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 12, height: 1.35),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         );
                       },
                     ),
@@ -168,14 +226,24 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: _pickImage,
-                    icon: Icon(_photoPath != null ? Icons.check_circle : Icons.camera_alt_outlined),
-                    label: Text(_photoPath != null ? 'Photo attached ✓' : 'Add photo'),
+                    icon: Icon(_photoPath != null
+                        ? Icons.check_circle
+                        : Icons.camera_alt_outlined),
+                    label: Text(_photoPath != null
+                        ? 'Photo attached ✓'
+                        : 'Add photo'),
                   ),
                   if (_photoPath != null) ...[
                     const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.file(File(_photoPath!), height: 120, fit: BoxFit.cover),
+                      child: Image.memory(
+                        base64Decode(_photoPath!),
+                        height: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const SizedBox(height: 120),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 12),

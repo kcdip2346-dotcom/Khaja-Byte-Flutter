@@ -13,11 +13,29 @@ class AdminFeedbackScreen extends StatefulWidget {
 
 class _AdminFeedbackScreenState extends State<AdminFeedbackScreen> {
   late Future<List<FeedbackItem>> _feedbacks;
+  int _newCount = 0;
+  String _statusFilter = 'all';
+  final _statusChips = const [
+    ('all', 'All'),
+    ('new', '🆕 New'),
+    ('read', '👀 Reviewed'),
+    ('responded', '💬 Responded'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _feedbacks = Api.getAdminFeedback();
+    _feedbacks.then((l) {
+      if (mounted) {
+        setState(() =>
+            _newCount = l.where((f) => f.status == 'new').length);
+      }
+    });
+  }
+
+  Future<void> _reload() async {
+    if (mounted) setState(() => _feedbacks = Api.getAdminFeedback());
   }
 
   Future<void> _respond(FeedbackItem f, String response) async {
@@ -25,7 +43,19 @@ class _AdminFeedbackScreenState extends State<AdminFeedbackScreen> {
       await Api.respondFeedback(f.id, response);
       if (!mounted) return;
       showSnack(context, 'Feedback updated.');
-      setState(() => _feedbacks = Api.getAdminFeedback());
+      await _reload();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      showSnack(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _markReviewed(FeedbackItem f) async {
+    try {
+      await Api.markFeedbackReviewed(f.id);
+      if (!mounted) return;
+      showSnack(context, 'Marked as reviewed ✓');
+      await _reload();
     } on ApiException catch (e) {
       if (!mounted) return;
       showSnack(context, e.message, error: true);
@@ -34,43 +64,82 @@ class _AdminFeedbackScreenState extends State<AdminFeedbackScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: FutureBuilder<List<FeedbackItem>>(
-        future: _feedbacks,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(
-                child: CircularProgressIndicator(color: KbColors.orange600));
-          }
-          if (snap.hasError) {
-            return Center(
-                child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('${snap.error}',
-                  style: const TextStyle(color: KbColors.red)),
-            ));
-          }
-          final list = snap.data ?? [];
-          if (list.isEmpty) {
-            return const EmptyState(
-                emoji: '💬', text: 'No feedback yet.');
-          }
-          return RefreshIndicator(
-            onRefresh: () async =>
-                setState(() => _feedbacks = Api.getAdminFeedback()),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: list.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, i) => _FeedbackCard(
-                f: list[i],
-                isAdmin: Api.user?.isAdmin ?? false,
-                onRespond: (r) => _respond(list[i], r),
-              ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final (value, label) in _statusChips)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(label,
+                          style: const TextStyle(fontSize: 12.5)),
+                      selected: _statusFilter == value,
+                      onSelected: (_) => setState(() => _statusFilter = value),
+                    ),
+                  ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<FeedbackItem>>(
+            future: _feedbacks,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(
+                    child: CircularProgressIndicator(
+                        color: KbColors.orange600));
+              }
+              if (snap.hasError) {
+                return Center(
+                    child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('${snap.error}',
+                      style: const TextStyle(color: KbColors.red)),
+                ));
+              }
+              var list = snap.data ?? [];
+              if (_statusFilter != 'all') {
+                list =
+                    list.where((f) => f.status == _statusFilter).toList();
+              }
+              if (list.isEmpty) {
+                return const EmptyState(
+                    emoji: '💬', text: 'No feedback yet.');
+              }
+              return RefreshIndicator(
+                onRefresh: _reload,
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, i) => _FeedbackCard(
+                    f: list[i],
+                    isAdmin: Api.user?.isAdmin ?? false,
+                    onRespond: (r) => _respond(list[i], r),
+                    onMarkReviewed: () => _markReviewed(list[i]),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: Text('👀 $_newCount unreviewed',
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: KbColors.inkSoft)),
+        ),
+      ],
     );
   }
 }
@@ -79,8 +148,12 @@ class _FeedbackCard extends StatefulWidget {
   final FeedbackItem f;
   final bool isAdmin;
   final ValueChanged<String> onRespond;
+  final VoidCallback onMarkReviewed;
   const _FeedbackCard(
-      {required this.f, required this.isAdmin, required this.onRespond});
+      {required this.f,
+      required this.isAdmin,
+      required this.onRespond,
+      required this.onMarkReviewed});
 
   @override
   State<_FeedbackCard> createState() => _FeedbackCardState();
@@ -167,16 +240,28 @@ class _FeedbackCardState extends State<_FeedbackCard> {
                       fontSize: 12, color: KbColors.inkFaint)),
             if (widget.isAdmin) ...[
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 40)),
-                  onPressed: () =>
-                      widget.onRespond(_reply.text.trim()),
-                  child: Text(
-                      f.response.isEmpty ? 'Reply' : 'Update reply'),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (f.status == 'new')
+                    TextButton.icon(
+                      onPressed: widget.onMarkReviewed,
+                      style: TextButton.styleFrom(
+                          foregroundColor: KbColors.blue,
+                          backgroundColor: KbColors.blueBg),
+                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                      label: const Text('Mark reviewed'),
+                    ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(0, 40)),
+                    onPressed: () =>
+                        widget.onRespond(_reply.text.trim()),
+                    child: Text(
+                        f.response.isEmpty ? 'Reply' : 'Update reply'),
+                  ),
+                ],
               ),
             ],
           ],

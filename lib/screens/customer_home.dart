@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -5,10 +7,15 @@ import '../api.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'menu_screen.dart';
+import 'notifications_screen.dart';
+import 'profile_screen.dart';
+import 'topup_screen.dart';
 import 'transactions_screen.dart';
 
 class CustomerHome extends StatefulWidget {
-  const CustomerHome({super.key});
+  final int unreadNotifs;
+  final VoidCallback? onOpenAlerts;
+  const CustomerHome({super.key, this.unreadNotifs = 0, this.onOpenAlerts});
 
   @override
   State<CustomerHome> createState() => _CustomerHomeState();
@@ -16,13 +23,62 @@ class CustomerHome extends StatefulWidget {
 
 class _CustomerHomeState extends State<CustomerHome> {
   late Future<List<Announcement>> _anns;
-  late Future<List<Offer>> _offers;
+  double _balance = Api.user?.creditBalance ?? 0;
+  Set<int> _seenAnnIds = {};
+  Timer? _liveTimer;
 
   @override
   void initState() {
     super.initState();
     _anns = Api.getAnnouncements();
-    _offers = Api.getOffers();
+    _anns.then((l) {
+      _seenAnnIds = l.map((a) => a.id).toSet();
+    });
+    _refreshBalance();
+    // Live refresh: balance + announcements arrive without user action
+    _liveTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      _refreshBalance();
+      _checkAnnouncements();
+    });
+  }
+
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshBalance() async {
+    try {
+      final credits = await Api.getCredits();
+      if (!mounted) return;
+      final bal = (credits['balance'] as num?)?.toDouble();
+      if (bal != null && bal != _balance) {
+        setState(() => _balance = bal);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkAnnouncements() async {
+    try {
+      final list = await Api.getAnnouncements();
+      if (!mounted) return;
+      final fresh = list
+          .where((a) => !_seenAnnIds.contains(a.id))
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (fresh.isNotEmpty) {
+        setState(() {
+          _anns = Future.value(list);
+          _seenAnnIds = list.map((a) => a.id).toSet();
+        });
+        showTopToast(
+            context,
+            '📢 ${fresh.last.title} — ${fresh.last.body.split('\n').first}',
+            icon: Icons.campaign_rounded,
+            color: KbColors.orange700);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -34,22 +90,30 @@ class _CustomerHomeState extends State<CustomerHome> {
         : u?.role == 'admin'
             ? 'Admin'
             : 'Student';
-    final points = u?.creditPoints ?? 0;
     return Scaffold(
       appBar: KbAppBar(
         title: 'Namaste, $name!',
         subtitle:
             '${DateFormat('EEEE, MMM d').format(DateTime.now())} · $role · ${u?.uid ?? ''}',
         actions: [
-          if (points > 0)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: const Icon(Icons.stars_rounded, size: 16, color: KbColors.amber),
-                label: Text('$points pts', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                backgroundColor: KbColors.ivory100,
-              ),
+          IconButton(
+            icon: Badge(
+              label: Text('${widget.unreadNotifs}'),
+              isLabelVisible: widget.unreadNotifs > 0,
+              child: const Icon(Icons.notifications_outlined,
+                  color: KbColors.orange700),
             ),
+            tooltip: 'Alerts',
+            onPressed: widget.onOpenAlerts ??
+                () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline, color: KbColors.orange700),
+            tooltip: 'Profile',
+            onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: KbColors.orange700),
             tooltip: 'Logout',
@@ -66,132 +130,83 @@ class _CustomerHomeState extends State<CustomerHome> {
         onRefresh: () async {
           setState(() => _anns = Api.getAnnouncements());
           await _anns;
+          await _refreshBalance();
         },
         child: KbWidth(
           child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            DashboardHero(
-              icon: Icons.qr_code_scanner_rounded,
-              title: 'Scan to Pay',
-              subtitle: 'Point your camera at the canteen QR to pay instantly.',
-              trailing: ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const MenuScreen())),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: KbColors.orange800,
-                  minimumSize: const Size(0, 42),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                ),
-                child: const Text('Open scanner',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-              footer: Row(
-                children: [
-                  const Icon(Icons.shield_outlined,
-                      size: 15, color: Colors.white70),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Every booking is same-day. Kitchen is audited every Friday — spot an issue? Flag it in Feedback.',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
+            _WalletHero(
+              balance: _balance,
+              onTopup: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => TopupScreen(
+                          onBalanceChanged: _refreshBalance))),
+              onOrder: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MenuScreen())),
             ),
             const SizedBox(height: 16),
+            const SectionHeader(
+                icon: Icons.campaign_outlined,
+                title: 'Latest announcements',
+                subtitle: 'Official updates from the canteen team'),
+            const SizedBox(height: 10),
+            FutureBuilder<List<Announcement>>(
+              future: _anns,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: KbColors.orange600)),
+                  );
+                }
+                final list = snap.data ?? [];
+                if (list.isEmpty) {
+                  return const EmptyState(emoji: '📭', text: 'No announcements.');
+                }
+                return Column(
+                  children: list
+                      .take(3)
+                      .map((a) => _AnnouncementTile(a: a))
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 18),
             // Combo deals section
             const SectionHeader(
                 icon: Icons.local_offer_outlined, title: 'Combo deals'),
             const SizedBox(height: 10),
-            SizedBox(
-              height: 130,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  _comboCard('Mo:Mo + Drink', 'Any Mo:Mo + beverage at ₹199', '🥟🥤', KbColors.orange700),
-                  _comboCard('Rice Bowl Combo', 'Rice + curry + pickle at ₹175', '🍚', KbColors.green),
-                  _comboCard('Pasta Special', 'Any pasta + garlic bread at ₹299', '🍝', KbColors.amber),
-                  _comboCard('Snack Pack', 'Fries + popcorn + drink at ₹250', '🍟', KbColors.blue),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            FutureBuilder<List<Offer>>(
-              future: _offers,
+            FutureBuilder<List<MenuItem>>(
+              future: Api.getMenu(),
               builder: (context, snap) {
-                if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
-                final offers = snap.data!;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SectionHeader(
-                        icon: Icons.local_offer_outlined, title: 'Today\'s specials'),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 120,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: offers.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemBuilder: (context, i) {
-                          final o = offers[i];
-                          return Container(
-                            width: 200,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [KbColors.orange700, KbColors.orange500],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(o.title,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 14)),
-                                if (o.body.isNotEmpty)
-                                  Text(o.body,
-                                      style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.9),
-                                          fontSize: 11),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                Row(
-                                  children: [
-                                    if (o.discountPct > 0)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text('${o.discountPct}% OFF',
-                                            style: const TextStyle(
-                                                color: KbColors.orange800,
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 11)),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                if (snap.connectionState != ConnectionState.done) {
+                  return const SizedBox(
+                    height: 140,
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: KbColors.orange600)),
+                  );
+                }
+                final combos = (snap.data ?? [])
+                    .where((i) =>
+                        i.category == 'Combos' && i.available)
+                    .toList();
+                if (combos.isEmpty) {
+                  return const EmptyState(
+                      emoji: '🍱', text: 'No combos available right now.');
+                }
+                return SizedBox(
+                  height: 165,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final c in combos)
+                        _comboCard(c),
+                    ],
+                  ),
                 );
               },
             ),
@@ -228,34 +243,6 @@ class _CustomerHomeState extends State<CustomerHome> {
               ],
             ),
             const SizedBox(height: 18),
-            const SectionHeader(
-                icon: Icons.campaign_outlined,
-                title: 'Latest announcements',
-                subtitle: 'Official updates from the canteen team'),
-            const SizedBox(height: 10),
-            FutureBuilder<List<Announcement>>(
-              future: _anns,
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Center(
-                        child: CircularProgressIndicator(
-                            color: KbColors.orange600)),
-                  );
-                }
-                final list = snap.data ?? [];
-                if (list.isEmpty) {
-                  return const EmptyState(emoji: '📭', text: 'No announcements.');
-                }
-                return Column(
-                  children: list
-                      .take(3)
-                      .map((a) => _AnnouncementTile(a: a))
-                      .toList(),
-                );
-              },
-            ),
           ],
           ),
         ),
@@ -263,36 +250,249 @@ class _CustomerHomeState extends State<CustomerHome> {
     );
   }
 
-  Widget _comboCard(String title, String subtitle, String emoji, Color color) {
+
+  Widget _comboCard(MenuItem combo) {
+    final colors = [
+      KbColors.orange700,
+      KbColors.green,
+      KbColors.amber,
+      KbColors.red,
+      KbColors.blue,
+    ];
+    final color = colors[combo.id % colors.length];
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MenuScreen(comboName: combo.name))),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: 180,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color, color.withValues(alpha: 0.72)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.30),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(10),
+                      top: Radius.circular(4)),
+                ),
+                child: const Text('DEAL',
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.5)),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(combo.image, style: const TextStyle(fontSize: 30)),
+                    const Spacer(),
+                    const Icon(Icons.arrow_forward_rounded,
+                        size: 18, color: Colors.white),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(combo.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(combo.description.isEmpty
+                    ? 'All-in-one meal deal'
+                    : combo.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        fontSize: 10.5,
+                        height: 1.35)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('रू ${combo.price.toStringAsFixed(0)}',
+                          style: TextStyle(
+                              color: color,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900)),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.add_circle_rounded,
+                        size: 22, color: Colors.white),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WalletHero extends StatelessWidget {
+  final double balance;
+  final VoidCallback onTopup;
+  final VoidCallback onOrder;
+  const _WalletHero({
+    required this.balance,
+    required this.onTopup,
+    required this.onOrder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withValues(alpha: 0.7)],
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          colors: [KbColors.orange800, KbColors.orange600],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: KbColors.orange800.withValues(alpha: 0.25),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 24)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13)),
-              Text(subtitle,
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 10)),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35)),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.wallet_rounded,
+                    size: 24, color: Colors.white),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('My Credits Wallet',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cashless payments made easy 🪙',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.monetization_on_rounded,
+                    color: Colors.white, size: 22),
+                const SizedBox(width: 8),
+                const Text('Balance',
+                    style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                const Spacer(),
+                Text(npr(balance),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onTopup,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: KbColors.orange800,
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.add_card, size: 17),
+                  label: const Text('Top up',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onOrder,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white, width: 1.3),
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.restaurant_menu, size: 17),
+                  label: const Text('Order now',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
             ],
           ),
         ],

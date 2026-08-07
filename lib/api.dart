@@ -4,6 +4,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Backend stores timestamps via SQLite datetime('now') which is UTC.
+/// Convert a naive UTC string to device-local time.
+DateTime? kbUtcToLocal(String s) {
+  final t = DateTime.tryParse('${s.trim()}Z');
+  return t?.toLocal();
+}
+
 class ApiException implements Exception {
   final String message;
   ApiException(this.message);
@@ -17,7 +24,7 @@ class User {
   final String email;
   final String role;
   final String uid;
-  final int creditPoints;
+  final double creditBalance;
   final String createdAt;
   User({
     required this.id,
@@ -25,7 +32,7 @@ class User {
     required this.email,
     required this.role,
     this.uid = '',
-    this.creditPoints = 0,
+    this.creditBalance = 0,
     this.createdAt = '',
   });
 
@@ -35,7 +42,7 @@ class User {
         email: j['email'] as String,
         role: j['role'] as String,
         uid: (j['uid'] ?? '') as String,
-        creditPoints: (j['credit_points'] ?? 0) as int,
+        creditBalance: (j['credit_balance'] ?? 0).toDouble(),
         createdAt: (j['created_at'] ?? '') as String,
       );
   bool get isAdmin => role == 'admin';
@@ -48,7 +55,16 @@ class User {
       email: email,
       role: role,
       uid: uid,
-      creditPoints: creditPoints,
+      creditBalance: creditBalance,
+      createdAt: createdAt);
+
+  User copyWithCreditBalance(double newBalance) => User(
+      id: id,
+      name: name,
+      email: email,
+      role: role,
+      uid: uid,
+      creditBalance: newBalance,
       createdAt: createdAt);
 
   Map<String, dynamic> toJson() => {
@@ -57,7 +73,7 @@ class User {
         'email': email,
         'role': role,
         'uid': uid,
-        'credit_points': creditPoints,
+        'credit_balance': creditBalance,
         'created_at': createdAt,
       };
 }
@@ -75,6 +91,7 @@ class MenuItem {
   final int canteenId;
   final int prepTime;
   final int dailyQuantity;
+  final String ingredients;
   MenuItem({
     required this.id,
     required this.name,
@@ -88,6 +105,7 @@ class MenuItem {
     this.canteenId = 1,
     this.prepTime = 15,
     this.dailyQuantity = 0,
+    this.ingredients = '',
   });
 
   factory MenuItem.fromJson(Map<String, dynamic> j) => MenuItem(
@@ -103,6 +121,7 @@ class MenuItem {
         canteenId: (j['canteen_id'] ?? 1) as int,
         prepTime: (j['prep_time'] ?? 15) as int,
         dailyQuantity: (j['daily_quantity'] ?? 0) as int,
+        ingredients: (j['ingredients'] ?? '') as String,
       );
 }
 
@@ -120,6 +139,12 @@ class Booking {
   final String itemsJson;
   final int canteenId;
   final String customerName;
+  final int queueWait;
+  final int prepTime;
+  final int totalTime;
+
+  /// Free-cancellation deadline (created_at + policy window), if within it.
+  final DateTime? cancelBy;
   Booking({
     required this.id,
     required this.bookingDate,
@@ -134,6 +159,10 @@ class Booking {
     this.itemsJson = '[]',
     this.canteenId = 1,
     this.customerName = '',
+    this.queueWait = 0,
+    this.prepTime = 0,
+    this.totalTime = 0,
+    this.cancelBy,
   });
 
   factory Booking.fromJson(Map<String, dynamic> j) => Booking(
@@ -150,9 +179,20 @@ class Booking {
         itemsJson: (j['items_json'] ?? '[]') as String,
         canteenId: (j['canteen_id'] ?? 1) as int,
         customerName: (j['customer_name'] ?? '') as String,
+        queueWait: (j['queue_wait'] ?? 0) as int,
+        prepTime: (j['prep_time'] ?? 0) as int,
+        totalTime: (j['total_time'] ?? 0) as int,
+        cancelBy: j['cancel_by'] != null
+            ? kbUtcToLocal(j['cancel_by'] as String)
+            : null,
       );
 
-  bool get cancellable => status == 'pending' || status == 'confirmed';
+  /// A pre-order may be cancelled only while it is pending/confirmed AND the
+  /// 7-minute free cancellation window is still open (Khājā Byte policy).
+  bool get cancellable =>
+      (status == 'pending' || status == 'confirmed') &&
+      cancelBy != null &&
+      DateTime.now().isBefore(cancelBy!);
 }
 
 class Txn {
@@ -578,7 +618,19 @@ class Api {
   }
 
   static Future<Map<String, dynamic>> getPoints() async {
-    return (await _get('/api/points')) as Map<String, dynamic>;
+    return (await _get('/api/credits')) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> getCredits() async {
+    return (await _get('/api/credits')) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> topupWallet(double amount, String method) async {
+    return (await _post('/api/credits/topup', {'amount': amount, 'method': method})) as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> getCreditsTransactions() async {
+    return (await _get('/api/admin/credits-transactions')) as List<Map<String, dynamic>>;
   }
 
   static Future<Map<String, dynamic>> getNotifications() async {
@@ -602,7 +654,7 @@ class Api {
     String? paymentDetail,
     int canteenId = 1,
     bool useOwnCup = false,
-    int redeemPoints = 0,
+    double useWallet = 0,
     String? customerName,
   }) async {
     return (await _post('/api/order', {
@@ -614,7 +666,7 @@ class Api {
       if (paymentDetail != null) 'payment_detail': paymentDetail,
       'canteen_id': canteenId,
       'use_own_cup': useOwnCup,
-      'redeem_points': redeemPoints,
+      'use_wallet': useWallet,
       if (customerName != null) 'customer_name': customerName,
     })) as Map<String, dynamic>;
   }
@@ -691,7 +743,7 @@ class Api {
   static Future<void> addMenuItem(String name, String category, String desc,
       double price, String image,
       {String photo = '', double? ownCupPrice, int canteenId = 1,
-      int prepTime = 15, int dailyQuantity = 0}) async {
+      int prepTime = 15, int dailyQuantity = 0, String ingredients = ''}) async {
     await _post('/api/admin/menu', {
       'name': name,
       'category': category,
@@ -703,6 +755,7 @@ class Api {
       'canteen_id': canteenId,
       'prep_time': prepTime,
       'daily_quantity': dailyQuantity,
+      'ingredients': ingredients,
     });
   }
 
@@ -714,7 +767,7 @@ class Api {
   static Future<void> editItem(int id, String name, String category,
       String desc, double price, String image,
       {String photo = '', double? ownCupPrice,
-      int prepTime = 15, int dailyQuantity = 0}) async {
+      int prepTime = 15, int dailyQuantity = 0, String ingredients = ''}) async {
     await _post('/api/admin/menu/$id/edit', {
       'name': name,
       'category': category,
@@ -725,6 +778,7 @@ class Api {
       'own_cup_price': ownCupPrice,
       'prep_time': prepTime,
       'daily_quantity': dailyQuantity,
+      'ingredients': ingredients,
     });
   }
 
@@ -803,6 +857,10 @@ class Api {
     await _post('/api/admin/feedback/$id/respond', {'response': response});
   }
 
+  static Future<void> markFeedbackReviewed(int id) async {
+    await _post('/api/admin/feedback/$id/review');
+  }
+
   static Future<List<Announcement>> getAdminAnnouncements() async {
     final d = await _get('/api/admin/announcements');
     return (d['announcements'] as List)
@@ -830,6 +888,20 @@ class Api {
     return (d['users'] as List)
         .map((e) => User.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  static Future<Map<String, dynamic>> adminAdjustCredits(
+      int userId, double amount) async {
+    return (await _post('/api/admin/users/$userId/credits',
+        {'amount': amount})) as Map<String, dynamic>;
+  }
+
+  static Future<void> adminSetRole(int userId, String role) async {
+    await _post('/api/admin/users/$userId/role', {'role': role});
+  }
+
+  static Future<void> adminSetName(int userId, String name) async {
+    await _post('/api/admin/users/$userId/name', {'name': name});
   }
 
   static Future<Map<String, dynamic>> getStaffToday() async {

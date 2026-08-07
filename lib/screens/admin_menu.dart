@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,11 +18,22 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   List<MenuItem>? _items;
   List<Canteen>? _canteens;
   String? _error;
+  Set<int> _specialItemIds = {};
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _filter = 'all';
+  final _filterChips = const [
+    ('all', 'All'),
+    ('available', '✅ Available'),
+    ('special', '⭐ Specials'),
+    ('soldout', '🚫 Sold out'),
+  ];
   final _name = TextEditingController();
   final _desc = TextEditingController();
   final _price = TextEditingController();
   final _ownCupPrice = TextEditingController();
   final _image = TextEditingController();
+  final _ingredients = TextEditingController();
   final _prepTime = TextEditingController(text: '15');
   final _dailyQty = TextEditingController(text: '0');
   String _category = 'Main Course';
@@ -34,17 +44,61 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text.toLowerCase());
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<MenuItem> _filterAndSort(List<MenuItem> items) {
+    var filtered = items;
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((i) =>
+          i.name.toLowerCase().contains(_searchQuery) ||
+          i.category.toLowerCase().contains(_searchQuery) ||
+          i.description.toLowerCase().contains(_searchQuery)).toList();
+    }
+    switch (_filter) {
+      case 'available':
+        filtered = filtered.where((i) => i.available).toList();
+        break;
+      case 'special':
+        filtered =
+            filtered.where((i) => _specialItemIds.contains(i.id)).toList();
+        break;
+      case 'soldout':
+        filtered = filtered.where((i) => !i.available).toList();
+        break;
+    }
+    // Specials first, then by category, then name
+    filtered.sort((a, b) {
+      final sa = _specialItemIds.contains(a.id) ? 0 : 1;
+      final sb = _specialItemIds.contains(b.id) ? 0 : 1;
+      if (sa != sb) return sa.compareTo(sb);
+      final ca = a.category.compareTo(b.category);
+      if (ca != 0) return ca;
+      return a.name.compareTo(b.name);
+    });
+    return filtered;
   }
 
   Future<void> _load() async {
     try {
       final items = await Api.getMenu();
       final canteens = await Api.getCanteens();
+      final offers = await Api.getOffers();
       if (!mounted) return;
       setState(() {
         _items = items;
         _canteens = canteens;
+        _specialItemIds =
+            offers.map((o) => o.menuItemId).whereType<int>().toSet();
         _error = null;
       });
     } on ApiException catch (e) {
@@ -57,7 +111,11 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 70);
     if (picked != null) {
-      setState(() => _photoPath = picked.path);
+      final bytes = await picked.readAsBytes();
+      final b64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      if (mounted) setState(() => _photoPath = b64);
+    } else {
+      if (mounted) showSnack(context, 'No image selected.', error: true);
     }
   }
 
@@ -72,8 +130,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     try {
       String photoBase64 = '';
       if (_photoPath != null) {
-        final bytes = await File(_photoPath!).readAsBytes();
-        photoBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        photoBase64 = _photoPath!;
       }
       final ownCup = _ownCupPrice.text.trim().isNotEmpty ? double.tryParse(_ownCupPrice.text.trim()) : null;
       final prepTime = int.tryParse(_prepTime.text.trim()) ?? 15;
@@ -88,7 +145,8 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ownCupPrice: ownCup,
           canteenId: _canteenId,
           prepTime: prepTime,
-          dailyQuantity: dailyQty);
+          dailyQuantity: dailyQty,
+          ingredients: _ingredients.text.trim());
       if (!mounted) return;
       showSnack(context, 'Menu item added.');
       _name.clear();
@@ -96,6 +154,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       _price.clear();
       _ownCupPrice.clear();
       _image.clear();
+      _ingredients.clear();
       _prepTime.text = '15';
       _dailyQty.text = '0';
       _photoPath = null;
@@ -128,18 +187,78 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
               ? const Center(
                   child:
                       CircularProgressIndicator(color: KbColors.orange600))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) => _AdminItemCard(
-                      item: items[i],
-                      isAdmin: Api.user?.isAdmin ?? false,
-                      onChanged: _load,
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search items...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                )
+                              : null,
+                          isDense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                          filled: true,
+                          fillColor: KbColors.ivory100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final (value, label) in _filterChips)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(label,
+                                      style:
+                                          const TextStyle(fontSize: 12.5)),
+                                  selected: _filter == value,
+                                  onSelected: (_) =>
+                                      setState(() => _filter = value),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _filterAndSort(items).length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, i) => _AdminItemCard(
+                            item: _filterAndSort(items)[i],
+                            isSpecial:
+                                _specialItemIds.contains(
+                                        _filterAndSort(items)[i].id),
+                            isAdmin: Api.user?.isAdmin ?? false,
+                            onChanged: _load,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
     );
   }
@@ -152,111 +271,148 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Add menu item',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 14),
-              TextField(
-                  controller: _name,
-                  decoration: const InputDecoration(labelText: 'Item name')),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                decoration: const InputDecoration(labelText: 'Category'),
-                items: const [
-                  DropdownMenuItem(value: 'Main Course', child: Text('Main Course')),
-                  DropdownMenuItem(value: 'Snacks', child: Text('Snacks')),
-                  DropdownMenuItem(value: 'Beverages', child: Text('Beverages')),
-                  DropdownMenuItem(value: 'Healthy', child: Text('Healthy')),
-                ],
-                onChanged: (v) => setState(() => _category = v!),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                  controller: _desc,
-                  decoration: const InputDecoration(
-                      labelText: 'Short description')),
-              const SizedBox(height: 10),
-              Row(
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: TextField(
-                        controller: _price,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            labelText: 'Price (NPR)',
-                            prefixText: 'रू ')),
+                  const Text('Add menu item',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 14),
+                  TextField(
+                      controller: _name,
+                      decoration: const InputDecoration(labelText: 'Item name')),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: _category,
+                    decoration: const InputDecoration(labelText: 'Category'),
+                    items: const [
+                      DropdownMenuItem(value: 'Bakery', child: Text('Bakery')),
+                      DropdownMenuItem(value: 'Light Bites', child: Text('Light Bites')),
+                      DropdownMenuItem(value: 'Mains', child: Text('Mains')),
+                      DropdownMenuItem(value: 'MO:MO', child: Text('MO:MO')),
+                      DropdownMenuItem(value: 'Popcorn', child: Text('Popcorn')),
+                      DropdownMenuItem(value: 'Beverages', child: Text('Beverages')),
+                      DropdownMenuItem(value: 'Healthy', child: Text('Healthy')),
+                      DropdownMenuItem(value: 'Sides', child: Text('Sides')),
+                      DropdownMenuItem(value: 'Combos', child: Text('Combos')),
+                      DropdownMenuItem(value: 'Add Ons', child: Text('Add Ons')),
+                    ],
+                    onChanged: (v) => setSheetState(() => _category = v!),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                        controller: _ownCupPrice,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            labelText: 'Own cup price',
-                            prefixText: 'रू ')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _desc,
+                      decoration: const InputDecoration(
+                          labelText: 'Short description')),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                            controller: _price,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                                labelText: 'Price (NPR)',
+                                prefixText: 'रू ')),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                            controller: _ownCupPrice,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                                labelText: 'Own cup price',
+                                prefixText: 'रू ')),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                            controller: _prepTime,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                                labelText: 'Prep time (min)')),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                            controller: _dailyQty,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                                labelText: 'Daily qty (0=∞)')),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _image,
+                      decoration: const InputDecoration(
+                          labelText: 'Emoji (e.g. 🍛)')),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _ingredients,
+                    minLines: 1,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Ingredients (comma separated)',
+                      hintText: 'e.g. rice, chicken, oil, salt — optional',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int>(
+                    initialValue: _canteenId,
+                    decoration: const InputDecoration(labelText: 'Canteen'),
+                    items: [
+                      for (final c in _canteens ?? [])
+                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    ],
+                    onChanged: (v) => setSheetState(() => _canteenId = v ?? 1),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_photoPath != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        base64Decode(_photoPath!.split(',')[1]),
+                        height: 100,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(height: 100),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await _pickPhoto();
+                      setSheetState(() {});
+                    },
+                    icon: Icon(_photoPath != null ? Icons.check_circle : Icons.photo_camera),
+                    label: Text(_photoPath != null ? 'Photo selected ✓' : 'Add photo'),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _adding ? null : _add,
+                    child: Text(_adding ? 'Adding…' : 'Add Item'),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                        controller: _prepTime,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            labelText: 'Prep time (min)')),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                        controller: _dailyQty,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            labelText: 'Daily qty (0=∞)')),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                  controller: _image,
-                  decoration: const InputDecoration(
-                      labelText: 'Emoji (e.g. 🍛)')),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<int>(
-                initialValue: _canteenId,
-                decoration: const InputDecoration(labelText: 'Canteen'),
-                items: [
-                  for (final c in _canteens ?? [])
-                    DropdownMenuItem(value: c.id, child: Text(c.name)),
-                ],
-                onChanged: (v) => setState(() => _canteenId = v ?? 1),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _pickPhoto,
-                icon: Icon(_photoPath != null ? Icons.check_circle : Icons.photo_camera),
-                label: Text(_photoPath != null ? 'Photo selected ✓' : 'Add photo'),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _adding ? null : _add,
-                child: Text(_adding ? 'Adding…' : 'Add Item'),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -264,10 +420,12 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
 class _AdminItemCard extends StatefulWidget {
   final MenuItem item;
   final bool isAdmin;
+  final bool isSpecial;
   final VoidCallback onChanged;
   const _AdminItemCard(
       {required this.item,
       required this.isAdmin,
+      required this.isSpecial,
       required this.onChanged});
 
   @override
@@ -330,17 +488,30 @@ class _AdminItemCardState extends State<_AdminItemCard> {
     );
   }
 
+  static String _bytesToB64(List<int> bytes) =>
+      'data:image/jpeg;base64,${base64Encode(bytes)}';
+
   Future<void> _edit(BuildContext context) async {
     final name = TextEditingController(text: widget.item.name);
     final desc = TextEditingController(text: widget.item.description);
-    final price =
-        TextEditingController(text: widget.item.price.toStringAsFixed(0));
-    final ownCupPrice = TextEditingController(
-        text: widget.item.ownCupPrice?.toStringAsFixed(0) ?? '');
+    final price = TextEditingController(text: widget.item.price.toStringAsFixed(0));
+    final ownCupPrice = TextEditingController(text: widget.item.ownCupPrice?.toStringAsFixed(0) ?? '');
     final image = TextEditingController(text: widget.item.image);
+    final ingredients = TextEditingController(text: widget.item.ingredients);
     final prepTime = TextEditingController(text: widget.item.prepTime.toString());
     final dailyQty = TextEditingController(text: widget.item.dailyQuantity.toString());
+    String? editPhoto;
     String category = widget.item.category;
+
+    Future<void> pick() async {
+      final picker = ImagePicker();
+      final picked = await picker
+          .pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 70);
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        editPhoto = _bytesToB64(bytes);
+      }
+    }
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -349,124 +520,109 @@ class _AdminItemCardState extends State<_AdminItemCard> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (ctx) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: StatefulBuilder(
-          builder: (ctx, setSheetState) => SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Edit ${widget.item.name}',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 14),
-                TextField(
-                    controller: name,
-                    decoration: const InputDecoration(labelText: 'Name')),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: category,
-                  decoration:
-                      const InputDecoration(labelText: 'Category'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'Main Course', child: Text('Main Course')),
-                    DropdownMenuItem(
-                        value: 'Snacks', child: Text('Snacks')),
-                    DropdownMenuItem(
-                        value: 'Beverages', child: Text('Beverages')),
-                    DropdownMenuItem(
-                        value: 'Healthy', child: Text('Healthy')),
-                  ],
-                  onChanged: (v) => setSheetState(() => category = v!),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                    controller: desc,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Edit ${widget.item.name}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 12),
+                  TextField(controller: name, decoration: const InputDecoration(labelText: 'Name', isDense: true)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Category', isDense: true),
+                    items: [
+                      for (final c in ['Bakery', 'Light Bites', 'Mains', 'MO:MO', 'Popcorn', 'Beverages', 'Healthy', 'Sides', 'Combos', 'Add Ons'])
+                        DropdownMenuItem(value: c, child: Text(c)),
+                    ],
+                    onChanged: (v) => setSheetState(() => category = v!),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(controller: desc, decoration: const InputDecoration(labelText: 'Description', isDense: true)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: TextField(controller: price, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Price (NPR)', prefixText: 'रू ', isDense: true))),
+                    const SizedBox(width: 8),
+                    Expanded(child: TextField(controller: ownCupPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Own cup price', prefixText: 'रू ', isDense: true))),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: TextField(controller: prepTime, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Prep (min)', isDense: true))),
+                    const SizedBox(width: 8),
+                    Expanded(child: TextField(controller: dailyQty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Daily qty (0=∞)', isDense: true))),
+                  ]),
+                  const SizedBox(height: 8),
+                  TextField(controller: image, decoration: const InputDecoration(labelText: 'Emoji (e.g. 🍛)', isDense: true)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: ingredients,
+                    minLines: 1,
+                    maxLines: 2,
                     decoration: const InputDecoration(
-                        labelText: 'Description')),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                          controller: price,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Price (NPR)', prefixText: 'रू ')),
+                        labelText: 'Ingredients (comma separated)',
+                        hintText: 'e.g. rice, chicken, oil, salt — optional',
+                        isDense: true),
+                  ),
+                  const SizedBox(height: 8),
+                  if (editPhoto != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        base64Decode(editPhoto!.split(',')[1]),
+                        height: 100,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(height: 100),
+                      ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                          controller: ownCupPrice,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Own cup price', prefixText: 'रू ')),
-                    ),
+                    const SizedBox(height: 8),
                   ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                          controller: prepTime,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prep time (min)')),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                          controller: dailyQty,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Daily qty (0=∞)')),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                    controller: image,
-                    decoration:
-                        const InputDecoration(labelText: 'Emoji')),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () async {
-                    final p = double.tryParse(price.text.trim());
-                    if (name.text.trim().isEmpty || p == null || p <= 0) {
-                      showSnack(ctx,
-                          'Name and a valid NPR price are required.',
-                          error: true);
-                      return;
-                    }
-                    try {
-                      final ownCup = ownCupPrice.text.trim().isNotEmpty
-                          ? double.tryParse(ownCupPrice.text.trim())
-                          : null;
-                      await Api.editItem(widget.item.id, name.text.trim(),
-                          category,
-                          desc.text.trim(), p,
-                          image.text.trim().isEmpty ? '🍽️' : image.text.trim(),
-                          ownCupPrice: ownCup,
-                          prepTime: int.tryParse(prepTime.text.trim()) ?? 15,
-                          dailyQuantity: int.tryParse(dailyQty.text.trim()) ?? 0);
-                      if (ctx.mounted) Navigator.pop(ctx, true);
-                    } on ApiException catch (e) {
-                      if (!ctx.mounted) return;
-                      showSnack(ctx, e.message, error: true);
-                    }
-                  },
-                  child: const Text('Save changes'),
-                ),
-              ],
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await pick();
+                      setSheetState(() {});
+                    },
+                    icon: Icon(editPhoto != null ? Icons.check_circle : Icons.photo_camera, size: 18),
+                    label: Text(editPhoto != null ? 'Photo selected ✓' : 'Change photo', style: const TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final p = double.tryParse(price.text.trim());
+                      if (name.text.trim().isEmpty || p == null || p <= 0) {
+                        showAppError(ctx, 'Name and a valid price are required.');
+                        return;
+                      }
+                      try {
+                        final ownCup = ownCupPrice.text.trim().isNotEmpty ? double.tryParse(ownCupPrice.text.trim()) : null;
+                        await Api.editItem(widget.item.id, name.text.trim(), category, desc.text.trim(), p,
+                            image.text.trim().isEmpty ? '🍽️' : image.text.trim(),
+                            photo: editPhoto ?? '', ownCupPrice: ownCup,
+                            prepTime: int.tryParse(prepTime.text.trim()) ?? 15,
+                            dailyQuantity: int.tryParse(dailyQty.text.trim()) ?? 0,
+                            ingredients: ingredients.text.trim());
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } on ApiException catch (e) {
+                        if (!ctx.mounted) return;
+                        showAppError(context, e.message);
+                      }
+                    },
+                    child: const Text('Save changes'),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
     if (saved == true) {
       if (!context.mounted) return;
@@ -529,6 +685,15 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                   Text(item.name,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  if (widget.isSpecial)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Text('⭐ Today\'s special',
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: KbColors.orange700)),
+                    ),
                   Text(
                       '${item.category} · ${npr(item.price)}${item.ownCupPrice != null ? ' · 🥤${npr(item.ownCupPrice!)}' : ''}',
                       style: const TextStyle(
@@ -536,6 +701,12 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                   Text('Prep: ${item.prepTime}min · Qty: ${item.dailyQuantity == 0 ? '∞' : item.dailyQuantity}',
                       style: const TextStyle(
                           fontSize: 11, color: KbColors.inkFaint)),
+                  if (item.ingredients.isNotEmpty)
+                    Text('🥗 ${item.ingredients}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 10.5, color: KbColors.inkFaint)),
                   const SizedBox(height: 4),
                   StatusBadge(_available ? 'Available' : 'Sold out'),
                 ],

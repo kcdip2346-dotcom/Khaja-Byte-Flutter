@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -14,6 +16,7 @@ class AdminBookingsScreen extends StatefulWidget {
 
 class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
   late Future<List<Booking>> _bookings;
+  Timer? _liveTimer;
   String _filter = 'all';
   final _searchController = TextEditingController();
   String _searchQuery = '';
@@ -25,10 +28,15 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.toLowerCase());
     });
+    // Live refresh so queue times & statuses stay current
+    _liveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() => _bookings = Api.getAdminBookings());
+    });
   }
 
   @override
   void dispose() {
+    _liveTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -57,6 +65,19 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
           b.itemSummary.toLowerCase().contains(_searchQuery) ||
           kbRef(b.id).toLowerCase().contains(_searchQuery)).toList();
     }
+    // Pending first, confirmed, completed, cancelled last; newest within group.
+    final priority = <String, int>{
+      'pending': 0,
+      'confirmed': 1,
+      'completed': 2,
+      'cancelled': 3,
+    };
+    filtered.sort((a, b) {
+      final byStatus =
+          (priority[a.status] ?? 4).compareTo(priority[b.status] ?? 4);
+      if (byStatus != 0) return byStatus;
+      return b.createdAt.compareTo(a.createdAt);
+    });
     return filtered;
   }
 
@@ -244,8 +265,10 @@ class _AdminBookingCard extends StatelessWidget {
                   style: const TextStyle(
                       fontSize: 11, color: KbColors.inkFaint)),
             const SizedBox(height: 8),
-            Text(b.itemSummary,
-                style: const TextStyle(fontSize: 13, height: 1.5)),
+            BookingItemThumbs(
+                itemsJson: b.itemsJson,
+                fallback: b.itemSummary,
+                thumbSize: 30),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -263,6 +286,16 @@ class _AdminBookingCard extends StatelessWidget {
                         color: KbColors.orange700)),
               ],
             ),
+            if (b.status == 'pending' || b.status == 'confirmed') ...[
+              const SizedBox(height: 6),
+              LiveTimingChip(
+                queueWait: b.queueWait,
+                prepTime: b.prepTime,
+                totalTime: b.totalTime,
+                compact: true,
+                start: DateTime.tryParse(b.createdAt),
+              ),
+            ],
             const SizedBox(height: 10),
             // Quick action buttons
             Row(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -105,11 +107,22 @@ class StaffHomeScreen extends StatefulWidget {
 
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   late Future<Map<String, dynamic>> _data;
+  Timer? _liveTimer;
 
   @override
   void initState() {
     super.initState();
     _data = Api.getStaffToday();
+    // Live refresh so queue times & statuses stay current
+    _liveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() => _data = Api.getStaffToday());
+    });
+  }
+
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -268,9 +281,10 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                               ],
                             ),
                             const SizedBox(height: 6),
-                            Text(b.itemSummary,
-                                style: const TextStyle(
-                                    fontSize: 12.5, height: 1.5)),
+                            BookingItemThumbs(
+                                itemsJson: b.itemsJson,
+                                fallback: b.itemSummary,
+                                thumbSize: 28),
                             const SizedBox(height: 4),
                             Row(
                               children: [
@@ -285,6 +299,17 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                                         color: KbColors.orange700)),
                               ],
                             ),
+                            if (b.status == 'pending' ||
+                                b.status == 'confirmed') ...[
+                              const SizedBox(height: 6),
+                              LiveTimingChip(
+                                queueWait: b.queueWait,
+                                prepTime: b.prepTime,
+                                totalTime: b.totalTime,
+                                compact: true,
+                                start: DateTime.tryParse(b.createdAt),
+                              ),
+                            ],
                           ],
                         ),
                       ),

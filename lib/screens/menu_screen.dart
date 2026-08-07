@@ -7,7 +7,8 @@ import '../theme.dart';
 import '../widgets.dart';
 
 class MenuScreen extends StatefulWidget {
-  const MenuScreen({super.key});
+  final String? comboName;
+  const MenuScreen({super.key, this.comboName});
 
   @override
   State<MenuScreen> createState() => _MenuScreenState();
@@ -16,14 +17,43 @@ class MenuScreen extends StatefulWidget {
 class _MenuScreenState extends State<MenuScreen> {
   final Map<int, int> _cart = {};
   late Future<List<MenuItem>> _items;
-  final _slots = [
-    '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '4:00 PM', '5:30 PM'
-  ];
+  late Future<List<Offer>> _offers;
+  bool _comboAdded = false;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  Set<int> _specialItemIds = {};
+  String _categoryFilter = 'all';
+  String _quickFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _items = Api.getMenu();
+    _offers = Api.getOffers();
+    _offers.then((offers) {
+      _specialItemIds = offers.map((o) => o.menuItemId).whereType<int>().toSet();
+    });
+    _items.then((items) {
+      if (!_comboAdded && widget.comboName != null && widget.comboName!.isNotEmpty) {
+        _comboAdded = true;
+        for (final item in items) {
+          if (item.name == widget.comboName && item.available) {
+            _cart[item.id] = 1;
+            break;
+          }
+        }
+        if (_cart.isNotEmpty && mounted) {
+          setState(() {});
+          showSnack(context, '${widget.comboName} added to cart!');
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -36,6 +66,34 @@ class _MenuScreenState extends State<MenuScreen> {
       body: KbWidth(
         child: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search menu items...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                filled: true,
+                fillColor: KbColors.ivory100,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+            ),
+          ),
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -50,6 +108,10 @@ class _MenuScreenState extends State<MenuScreen> {
               style: TextStyle(
                   fontSize: 12, color: KbColors.green, height: 1.5),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: _buildFilterChips(),
           ),
           Expanded(
             child: FutureBuilder<List<MenuItem>>(
@@ -70,7 +132,31 @@ class _MenuScreenState extends State<MenuScreen> {
                   ));
                 }
                 final items = snap.data ?? [];
-                final categories = items
+                final filteredItems = items.where((i) {
+                  if (_searchQuery.isNotEmpty &&
+                      !(i.name.toLowerCase().contains(_searchQuery) ||
+                          i.category.toLowerCase().contains(_searchQuery) ||
+                          i.description.toLowerCase().contains(_searchQuery))) {
+                    return false;
+                  }
+                  if (_categoryFilter != 'all' &&
+                      i.category != _categoryFilter) {
+                    return false;
+                  }
+                  switch (_quickFilter) {
+                    case 'available':
+                      if (!i.available) return false;
+                      break;
+                    case 'specials':
+                      if (!_specialItemIds.contains(i.id)) return false;
+                      break;
+                    case 'combos':
+                      if (i.category != 'Combos') return false;
+                      break;
+                  }
+                  return true;
+                }).toList();
+                final categories = filteredItems
                     .map((e) => e.category)
                     .toSet()
                     .toList();
@@ -102,11 +188,22 @@ class _MenuScreenState extends State<MenuScreen> {
                             ],
                           ),
                         ),
-                        for (final item in items.where(
-                            (e) => e.category == cat))
+                        for (final item in filteredItems
+                            .where((e) => e.category == cat)
+                            .toList()
+                          ..sort((a, b) {
+                            final sa =
+                                _specialItemIds.contains(a.id) ? 0 : 1;
+                            final sb =
+                                _specialItemIds.contains(b.id) ? 0 : 1;
+                            return sa != sb
+                                ? sa.compareTo(sb)
+                                : a.name.compareTo(b.name);
+                          }))
                           _ItemCard(
                             item: item,
                             qty: _cart[item.id] ?? 0,
+                            isSpecial: _specialItemIds.contains(item.id),
                             onAdd: () => setState(() => _cart[item.id] =
                                 (_cart[item.id] ?? 0) + 1),
                             onRemove: () => setState(() {
@@ -154,22 +251,109 @@ class _MenuScreenState extends State<MenuScreen> {
       builder: (ctx) => CheckoutSheet(
         cart: _cart,
         items: items,
-        slots: _slots,
         subtotal: subtotal,
       ),
     );
     setState(() {});
+  }
+
+  Widget _buildFilterChips() {
+    return FutureBuilder<List<MenuItem>>(
+      future: _items,
+      builder: (context, snap) {
+        final items = snap.data ?? [];
+        final categories = items.map((e) => e.category).toSet().toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _chip('all', 'All', _quickFilter == 'all' &&
+                      _categoryFilter == 'all'),
+                  const SizedBox(width: 6),
+                  _chip('available', '✅ Available', _quickFilter == 'available'),
+                  const SizedBox(width: 6),
+                  _chip('specials', '⭐ Specials', _quickFilter == 'specials'),
+                  const SizedBox(width: 6),
+                  _chip('combos', '🍱 Combos', _quickFilter == 'combos'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _chip('cat_all', 'All categories', _categoryFilter == 'all'),
+                  for (final c in categories) ...[
+                    const SizedBox(width: 6),
+                    _chip('cat_$c', c, _categoryFilter == c),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _chip(String value, String label, bool selected) {
+    Color color;
+    if (value == 'all' || value == 'cat_all') {
+      color = KbColors.ink;
+    } else if (value.startsWith('cat_')) {
+      color = KbColors.orange700;
+    } else {
+      color = KbColors.blue;
+    }
+    return InkWell(
+      onTap: () {
+        if (value == 'all') {
+          setState(() {
+            _categoryFilter = 'all';
+            _quickFilter = 'all';
+          });
+        } else if (value.startsWith('cat_')) {
+          final cat = value.substring(4);
+          setState(() => _categoryFilter = _categoryFilter == cat ? 'all' : cat);
+        } else {
+          setState(() =>
+              _quickFilter = _quickFilter == value ? 'all' : value);
+        }
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color : KbColors.ivory100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: selected ? color : KbColors.ivory200, width: 1.2),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : KbColors.ink)),
+      ),
+    );
   }
 }
 
 class _ItemCard extends StatelessWidget {
   final MenuItem item;
   final int qty;
+  final bool isSpecial;
   final VoidCallback onAdd;
   final VoidCallback onRemove;
   const _ItemCard({
     required this.item,
     required this.qty,
+    this.isSpecial = false,
     required this.onAdd,
     required this.onRemove,
   });
@@ -177,6 +361,12 @@ class _ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      color: isSpecial ? KbColors.ivory100 : null,
+      shape: isSpecial
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: KbColors.orange400, width: 1.5))
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -209,6 +399,20 @@ class _ItemCard extends StatelessWidget {
                               fontWeight: FontWeight.w700, fontSize: 14),
                         ),
                       ),
+                      if (isSpecial)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: KbColors.orange200,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('SPECIAL',
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: KbColors.orange800)),
+                        ),
+                      const SizedBox(width: 6),
                       if (!item.available)
                         const StatusBadge('Sold out'),
                     ],
@@ -225,6 +429,8 @@ class _ItemCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
                           color: KbColors.orange700)),
+                  if (item.ingredients.isNotEmpty)
+                    _IngredientsToggle(ingredients: item.ingredients),
                 ],
               ),
             ),
@@ -242,6 +448,81 @@ class _ItemCard extends StatelessWidget {
         alignment: Alignment.center,
         child: Text(item.image, style: const TextStyle(fontSize: 26)),
       );
+}
+
+class _IngredientsToggle extends StatefulWidget {
+  final String ingredients;
+  const _IngredientsToggle({required this.ingredients});
+
+  @override
+  State<_IngredientsToggle> createState() => _IngredientsToggleState();
+}
+
+class _IngredientsToggleState extends State<_IngredientsToggle> {
+  bool _open = false;
+
+  static const _allergens = [
+    'nut', 'peanut', 'soy', 'wheat', 'gluten', 'dairy', 'milk', 'egg',
+    'shellfish', 'fish', 'sesame',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.ingredients.toLowerCase();
+    final hasAllergen = _allergens.any(text.contains);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 6),
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_open ? Icons.expand_less : Icons.expand_more,
+                  size: 15, color: KbColors.blue),
+              const SizedBox(width: 3),
+              Text(_open ? 'Hide ingredients' : 'View ingredients',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: KbColors.blue)),
+            ],
+          ),
+        ),
+        if (_open) ...[
+          const SizedBox(height: 5),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: KbColors.ivory100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(widget.ingredients,
+                style: const TextStyle(fontSize: 11, height: 1.4)),
+          ),
+          if (hasAllergen) ...[
+            const SizedBox(height: 5),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: KbColors.amberBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('⚠️ May contain common allergens — check before ordering.',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: KbColors.amber)),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
 }
 
 class _QtyStepper extends StatelessWidget {
@@ -311,13 +592,11 @@ class _CartBar extends StatelessWidget {
 class CheckoutSheet extends StatefulWidget {
   final Map<int, int> cart;
   final List<MenuItem> items;
-  final List<String> slots;
   final double subtotal;
   const CheckoutSheet({
     super.key,
     required this.cart,
     required this.items,
-    required this.slots,
     required this.subtotal,
   });
 
@@ -326,11 +605,10 @@ class CheckoutSheet extends StatefulWidget {
 }
 
 class _CheckoutSheetState extends State<CheckoutSheet> {
-  String _slot = '11:00 AM';
+  TimeOfDay _slot = const TimeOfDay(hour: 11, minute: 0);
   String _method = 'card';
   bool _willingToDrink = false;
   bool _useOwnCup = false;
-  int _redeemPoints = 0;
   bool _showQR = false;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
@@ -357,19 +635,57 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     return total;
   }
 
-  int get _maxRedeemPoints => Api.user?.creditPoints ?? 0;
+  double get _creditBalance => Api.user?.creditBalance ?? 0;
+
+  String get _formattedTime {
+    final hour = _slot.hourOfPeriod;
+    final minute = _slot.minute.toString().padLeft(2, '0');
+    final period = _slot.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  String get _timeForApi {
+    return '${_slot.hour.toString().padLeft(2, '0')}:${_slot.minute.toString().padLeft(2, '0')}';
+  }
 
   String get _today => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
+  Future<void> _selectTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _slot,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      // Only allow times between 9 AM and 5 PM
+      if (picked.hour >= 9 && picked.hour <= 17) {
+        setState(() => _slot = picked);
+      } else {
+        if (mounted) {
+          showAppError(context, 'Please select a time between 9 AM and 5 PM.');
+        }
+      }
+    }
+  }
+
   Future<void> _placeOrder() async {
     if (_hasColdDrink && !_willingToDrink) {
-      showSnack(context, 'Please confirm you are willing to drink cold beverages.',
-          error: true);
+      showAppError(context, 'Please confirm you are willing to drink cold beverages.');
       return;
     }
-    if (_method != 'card' &&
+    if (_method != 'card' && _method != 'credits' &&
         (_payName.text.trim().isEmpty || _payDetail.text.trim().isEmpty)) {
-      showSnack(context, 'Please fill in your payment details.', error: true);
+      showAppError(context, 'Please fill in your payment details.');
+      return;
+    }
+    if (_method == 'credits' && _creditBalance < _effectiveSubtotal) {
+      showAppError(context,
+          'Insufficient credits. Please topup or choose another method.');
       return;
     }
     setState(() => _loading = true);
@@ -379,29 +695,28 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             .map((e) => {'id': e.key, 'qty': e.value})
             .toList(),
         _today,
-        _slot,
+        _timeForApi,
         _method,
         paymentName: _payName.text.trim(),
         paymentDetail: _payDetail.text.trim(),
         useOwnCup: _useOwnCup,
-        redeemPoints: _redeemPoints,
+        useWallet: _method == 'credits' ? _effectiveSubtotal : 0,
         customerName: _customerName.text.trim().isNotEmpty
             ? _customerName.text.trim()
             : null,
       );
       if (!mounted) return;
       Navigator.pop(context);
-      final ptsEarned = result['points_earned'] as int? ?? 0;
-      final ptsRedeemed = result['points_redeemed'] as int? ?? 0;
+      final creditsUsed = result['wallet_used'] as double? ?? 0;
       final queueWait = result['queue_wait'] as int? ?? 0;
       final prepTime = result['prep_time'] as int? ?? 15;
       showSnack(
         context,
-        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${ptsEarned > 0 ? ' · +$ptsEarned pts' : ''}${ptsRedeemed > 0 ? ' · -$ptsRedeemed pts' : ''}',
+        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${creditsUsed > 0 ? ' · ${npr(creditsUsed)} paid from credits' : ''}',
       );
       setState(() {});
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, e.message, error: true);
+      if (mounted) showAppError(context, e.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -487,17 +802,25 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _slot,
-              decoration: const InputDecoration(
-                  labelText: 'Time slot',
-                  prefixIcon: Icon(Icons.schedule,
-                      color: KbColors.orange600, size: 20)),
-              items: widget.slots
-                  .map((s) =>
-                      DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) => setState(() => _slot = v!),
+            InkWell(
+              onTap: _selectTime,
+              borderRadius: BorderRadius.circular(12),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                    labelText: 'Pickup time',
+                    prefixIcon: Icon(Icons.schedule,
+                        color: KbColors.orange600, size: 20)),
+                child: Text(
+                  _formattedTime,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Tap to select time (9 AM - 5 PM)',
+              style: TextStyle(fontSize: 11, color: KbColors.inkFaint),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -527,10 +850,72 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
               runSpacing: 8,
               children: [
                 _payChip('card', '💳', 'Card'),
-                _payChip('esewa', '🟣', 'eSewa'),
-                _payChip('khalti', '🔵', 'Khalti'),
+                _payChip('esewa', '🟢', 'eSewa'),
+                _payChip('khalti', '🔴', 'Khalti'),
+                _payChip('credits', '🪙', 'Credits'),
               ],
             ),
+            const SizedBox(height: 14),
+            if (_method == 'credits' && _creditBalance <= 0)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.redBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFF5B5B5)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: KbColors.red, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('No credits balance. Topup via Alerts tab.',
+                          style: TextStyle(fontSize: 12, color: KbColors.red)),
+                    ),
+                  ],
+                ),
+              ),
+            if (_method == 'credits' && _creditBalance > 0 && _creditBalance < _effectiveSubtotal)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.amberBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: KbColors.amber, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Insufficient credits (${_creditBalance.toInt()} available). Topup via Alerts tab.',
+                          style: const TextStyle(fontSize: 12, color: KbColors.amber)),
+                    ),
+                  ],
+                ),
+              ),
+            if (_method == 'credits' && _creditBalance >= _effectiveSubtotal)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.greenBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBFE8CF)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Pay ${npr(_effectiveSubtotal)} from credits (${_creditBalance.toInt()} available)',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green)),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 14),
             if (_hasBeverageWithOwnCup)
               Container(
@@ -572,51 +957,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
               ),
             if (_hasBeverageWithOwnCup) const SizedBox(height: 14),
-            if (_maxRedeemPoints > 0)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: KbColors.ivory100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: KbColors.ivory200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.account_balance_wallet_rounded,
-                            size: 18, color: KbColors.green),
-                        const SizedBox(width: 6),
-                        Text('Use credit points ($_maxRedeemPoints available)',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 12.5)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Slider(
-                            value: _redeemPoints.toDouble(),
-                            min: 0,
-                            max: _maxRedeemPoints > 100 ? 100 : _maxRedeemPoints.toDouble(),
-                            divisions: _maxRedeemPoints > 100 ? 20 : (_maxRedeemPoints > 10 ? 10 : _maxRedeemPoints),
-                            onChanged: (v) => setState(() => _redeemPoints = v.round()),
-                            activeColor: KbColors.orange600,
-                          ),
-                        ),
-                        Text('₹$_redeemPoints',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            if (_maxRedeemPoints > 0) const SizedBox(height: 14),
-            if (_method != 'card') ...[
+            if (_method != 'card' && _method != 'credits') ...[
               if (_showQR)
                 Container(
                   width: double.infinity,
@@ -682,6 +1023,25 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   labelText: _method == 'card'
                       ? 'Card number'
                       : '$_method number (98XXXXXXXX)',
+                ),
+              ),
+            ] else if (_method == 'credits') ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.greenBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBFE8CF)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Pay ${npr(_effectiveSubtotal)} from credits balance',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  ],
                 ),
               ),
             ] else ...[

@@ -26,46 +26,82 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   Future<void> _adjustCredits(User u) async {
     final controller = TextEditingController();
+    bool deduct = false;
     final amount = await showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Adjust credits · ${u.name}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Positive adds credits, negative deducts.\nCurrent balance: ',
-              style: TextStyle(fontSize: 12.5, color: KbColors.inkSoft),
-            ),
-            const SizedBox(height: 4),
-            Text(npr(u.creditBalance),
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, fontSize: 18, color: KbColors.orange700)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Amount (e.g. 200 or -100)',
-                prefixText: 'NRs ',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Adjust credits · ${u.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Current balance:',
+                  style: TextStyle(fontSize: 12.5, color: KbColors.inkSoft)),
+              const SizedBox(height: 4),
+              Text(npr(u.creditBalance),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: KbColors.orange700)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => setDlgState(() => deduct = false),
+                      style: deduct
+                          ? OutlinedButton.styleFrom(
+                              backgroundColor: KbColors.ivory100)
+                          : FilledButton.styleFrom(
+                              backgroundColor: KbColors.green),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Add'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => setDlgState(() => deduct = true),
+                      style: deduct
+                          ? FilledButton.styleFrom(
+                              backgroundColor: KbColors.red)
+                          : OutlinedButton.styleFrom(
+                              backgroundColor: KbColors.ivory100),
+                      icon: const Icon(Icons.remove, size: 16),
+                      label: const Text('Deduct'),
+                    ),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: deduct ? 'Amount to deduct' : 'Amount to add',
+                  prefixText: 'NRs ',
+                  hintText: deduct ? 'e.g. 100' : 'e.g. 200',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () {
+                  final v = double.tryParse(controller.text.trim());
+                  if (v == null || v <= 0) return;
+                  Navigator.pop(ctx, deduct ? -v : v);
+                },
+                child: const Text('Apply')),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () {
-                final v = double.tryParse(controller.text.trim());
-                if (v == null || v == 0) return;
-                Navigator.pop(ctx, v);
-              },
-              child: const Text('Apply')),
-        ],
       ),
     );
     if (amount == null) return;

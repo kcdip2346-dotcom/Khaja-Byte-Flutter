@@ -593,11 +593,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             _policyTile(
               Icons.timer_outlined,
-              'Cancellation window (7 minutes)',
-              'You may cancel a pre-order within 7 minutes of placing it, '
-                  'before preparation begins — paid orders are auto-refunded. '
-                  'Once the window passes or cooking starts, the order is '
-                  'final: no cancellation, modification or refund.',
+              'Cancellation (30 min before booking)',
+              'You can cancel a pre-order up to 30 minutes before your booked '
+                  'time, provided the cafeteria has not yet started preparing '
+                  'the meal — handy for fixing accidental orders. Once the '
+                  'cutoff passes or preparation begins, the order is final: '
+                  'no cancellation, modification or refund. Eligible '
+                  'cancellations are refunded per the cafeteria refund policy.',
             ),
             _policyTile(
               Icons.inventory_2_outlined,

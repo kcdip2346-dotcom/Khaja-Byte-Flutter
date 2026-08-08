@@ -49,7 +49,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
           }
           return RefreshIndicator(
             onRefresh: () async =>
-                setState(() => _anns = Api.getAnnouncements()),
+                setState(() { _anns = Api.getAnnouncements(); }),
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: anns.length,

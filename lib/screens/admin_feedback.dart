@@ -35,7 +35,7 @@ class _AdminFeedbackScreenState extends State<AdminFeedbackScreen> {
   }
 
   Future<void> _reload() async {
-    if (mounted) setState(() => _feedbacks = Api.getAdminFeedback());
+    if (mounted) setState(() { _feedbacks = Api.getAdminFeedback(); });
   }
 
   Future<void> _respond(FeedbackItem f, String response) async {
@@ -79,7 +79,7 @@ class _AdminFeedbackScreenState extends State<AdminFeedbackScreen> {
                       label: Text(label,
                           style: const TextStyle(fontSize: 12.5)),
                       selected: _statusFilter == value,
-                      onSelected: (_) => setState(() => _statusFilter = value),
+                      onSelected: (_) => setState(() { _statusFilter = value; }),
                     ),
                   ),
               ],

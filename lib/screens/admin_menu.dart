@@ -321,7 +321,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                             keyboardType: TextInputType.number,
                             decoration: const InputDecoration(
                                 labelText: 'Price (NPR)',
-                                prefixText: 'रू ')),
+                                prefixText: 'NRs ')),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -330,7 +330,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                             keyboardType: TextInputType.number,
                             decoration: const InputDecoration(
                                 labelText: 'Own cup price',
-                                prefixText: 'रू ')),
+                                prefixText: 'NRs ')),
                       ),
                     ],
                   ),
@@ -549,9 +549,9 @@ class _AdminItemCardState extends State<_AdminItemCard> {
                   TextField(controller: desc, decoration: const InputDecoration(labelText: 'Description', isDense: true)),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: TextField(controller: price, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Price (NPR)', prefixText: 'रू ', isDense: true))),
+                    Expanded(child: TextField(controller: price, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Price (NPR)', prefixText: 'NRs ', isDense: true))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: ownCupPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Own cup price', prefixText: 'रू ', isDense: true))),
+                    Expanded(child: TextField(controller: ownCupPrice, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Own cup price', prefixText: 'NRs ', isDense: true))),
                   ]),
                   const SizedBox(height: 8),
                   Row(children: [

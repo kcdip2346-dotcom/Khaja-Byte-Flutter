@@ -93,18 +93,23 @@ class _CustomerShellState extends State<CustomerShell> {
     try {
       final bookings = await Api.getBookings();
       if (bookings.isEmpty) return;
-      // Detect status changes on ANY booking, not just the latest.
+      // Only touch the UI when something actually changed, so the Bookings
+      // list doesn't rebuild on every 2s poll.
+      bool changed = false;
       for (final b in bookings) {
         if (b.status == 'pending' || b.status == 'completed' ||
             b.status == 'cancelled' || b.status == 'confirmed') {
           final prev = _statusMap[b.id];
-          if (prev != null && prev != b.status) {
+          if (prev == null) {
+            changed = true; // a new booking appeared
+          } else if (prev != b.status) {
             _onStatusChange(b);
+            changed = true;
           }
           _statusMap[b.id] = b.status;
         }
       }
-      _bookingsKey.currentState?.reload();
+      if (changed) _bookingsKey.currentState?.reload();
     } catch (_) {}
   }
 

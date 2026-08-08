@@ -21,7 +21,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   void _reload() {
-    setState(() => _users = Api.getAdminUsers());
+    setState(() { _users = Api.getAdminUsers(); });
   }
 
   Future<void> _adjustCredits(User u) async {
@@ -49,7 +49,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Amount (e.g. 200 or -100)',
-                prefixText: 'रू ',
+                prefixText: 'NRs ',
               ),
             ),
           ],

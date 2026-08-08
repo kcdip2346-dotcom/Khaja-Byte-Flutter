@@ -54,7 +54,7 @@ class _CustomerHomeState extends State<CustomerHome> {
       if (!mounted) return;
       final bal = (credits['balance'] as num?)?.toDouble();
       if (bal != null && bal != _balance) {
-        setState(() => _balance = bal);
+        setState(() { _balance = bal; });
       }
     } catch (_) {}
   }
@@ -128,7 +128,7 @@ class _CustomerHomeState extends State<CustomerHome> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() => _anns = Api.getAnnouncements());
+          setState(() { _anns = Api.getAnnouncements(); });
           await _anns;
           await _refreshBalance();
         },
@@ -199,7 +199,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                       emoji: '🍱', text: 'No combos available right now.');
                 }
                 return SizedBox(
-                  height: 165,
+                  height: 178,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
@@ -259,7 +259,10 @@ class _CustomerHomeState extends State<CustomerHome> {
       KbColors.red,
       KbColors.blue,
     ];
-    final color = colors[combo.id % colors.length];
+    final n = combo.name.toLowerCase();
+    final color = (n.contains('snack pack') || n.contains('rice bowl'))
+        ? KbColors.red
+        : colors[combo.id % colors.length];
     return InkWell(
       onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => MenuScreen(comboName: combo.name))),
@@ -344,7 +347,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text('रू ${combo.price.toStringAsFixed(0)}',
+                      child: Text(npr(combo.price),
                           style: TextStyle(
                               color: color,
                               fontSize: 12.5,

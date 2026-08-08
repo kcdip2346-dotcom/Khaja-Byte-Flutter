@@ -29,18 +29,18 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
       showSnack(context, 'Title and message are required.', error: true);
       return;
     }
-    setState(() => _posting = true);
+    setState(() { _posting = true; });
     try {
       await Api.addAnnouncement(_title.text.trim(), _body.text.trim());
       if (!mounted) return;
       showSnack(context, 'Announcement published 📢');
       _title.clear();
       _body.clear();
-      setState(() => _anns = Api.getAdminAnnouncements());
+      setState(() { _anns = Api.getAdminAnnouncements(); });
     } on ApiException catch (e) {
       if (mounted) showSnack(context, e.message, error: true);
     } finally {
-      if (mounted) setState(() => _posting = false);
+      if (mounted) setState(() { _posting = false; });
     }
   }
 
@@ -65,7 +65,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
       await Api.deleteAnnouncement(a.id);
       if (!mounted) return;
       showSnack(context, 'Announcement deleted.');
-      setState(() => _anns = Api.getAdminAnnouncements());
+      setState(() { _anns = Api.getAdminAnnouncements(); });
     } on ApiException catch (e) {
       if (!mounted) return;
       showSnack(context, e.message, error: true);

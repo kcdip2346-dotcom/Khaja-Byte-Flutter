@@ -27,7 +27,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _refreshBalance();
     // Live refresh so new alerts appear instantly while viewing
     _liveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      setState(() => _data = Api.getNotifications());
+      setState(() { _data = Api.getNotifications(); });
       _refreshBalance();
     });
   }
@@ -44,7 +44,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (mounted) {
         final bal = (credits['balance'] as num?)?.toDouble();
         if (bal != null && bal != _balance) {
-          setState(() => _balance = bal);
+          setState(() { _balance = bal; });
         }
       }
     } catch (_) {}
@@ -52,7 +52,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markRead(int id) async {
     await Api.markNotificationRead(id);
-    setState(() => _data = Api.getNotifications());
+    setState(() { _data = Api.getNotifications(); });
   }
 
   @override

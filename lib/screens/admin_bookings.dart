@@ -26,11 +26,11 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
     super.initState();
     _bookings = Api.getAdminBookings();
     _searchController.addListener(() {
-      setState(() => _searchQuery = _searchController.text.toLowerCase());
+      setState(() { _searchQuery = _searchController.text.toLowerCase(); });
     });
     // Live refresh so queue times & statuses stay current
     _liveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted) setState(() => _bookings = Api.getAdminBookings());
+      if (mounted) setState(() { _bookings = Api.getAdminBookings(); });
     });
   }
 
@@ -46,7 +46,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
       await Api.setBookingStatus(b.id, status);
       if (!mounted) return;
       showSnack(context, '${kbRef(b.id)} → ${status.toUpperCase()}');
-      setState(() => _bookings = Api.getAdminBookings());
+      setState(() { _bookings = Api.getAdminBookings(); });
     } on ApiException catch (e) {
       if (!mounted) return;
       showSnack(context, e.message, error: true);
@@ -112,7 +112,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
 
           return RefreshIndicator(
             onRefresh: () async =>
-                setState(() => _bookings = Api.getAdminBookings()),
+                setState(() { _bookings = Api.getAdminBookings(); }),
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -127,7 +127,12 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                _statCard('Revenue', totalRevenue, KbColors.orange700, KbColors.orange200, isMoney: true),
+                Row(
+                  children: [
+                    _statCard('Revenue', totalRevenue, KbColors.orange700,
+                        KbColors.orange200, isMoney: true),
+                  ],
+                ),
                 const SizedBox(height: 14),
 
                 // Search
@@ -210,7 +215,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
   Widget _filterChip(String value, String label) {
     final selected = _filter == value;
     return InkWell(
-      onTap: () => setState(() => _filter = value),
+      onTap: () => setState(() { _filter = value; }),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

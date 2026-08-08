@@ -50,7 +50,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 text: 'No transactions yet.\nPlace your first order and pay online!');
           }
           return RefreshIndicator(
-            onRefresh: () async => setState(() => _txns = Api.getTransactions()),
+            onRefresh: () async => setState(() { _txns = Api.getTransactions(); }),
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: txns.length,

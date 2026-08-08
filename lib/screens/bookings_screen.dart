@@ -23,7 +23,7 @@ class BookingsScreenState extends State<BookingsScreen> {
   }
 
   void reload() {
-    if (mounted) setState(() => _bookings = Api.getBookings());
+    if (mounted) setState(() { _bookings = Api.getBookings(); });
   }
 
   List<Booking> _filterBookings(List<Booking> bookings) {
@@ -45,7 +45,7 @@ class BookingsScreenState extends State<BookingsScreen> {
       body: FutureBuilder<List<Booking>>(
         future: _bookings,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
+          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
             return const Center(
                 child: CircularProgressIndicator(color: KbColors.orange600));
           }
@@ -73,7 +73,7 @@ class BookingsScreenState extends State<BookingsScreen> {
               .fold<double>(0, (sum, b) => sum + b.total);
 
           return RefreshIndicator(
-            onRefresh: () async => setState(() => _bookings = Api.getBookings()),
+            onRefresh: () async => setState(() { _bookings = Api.getBookings(); }),
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -152,7 +152,7 @@ class BookingsScreenState extends State<BookingsScreen> {
                         child: _BookingCard(
                           b: b,
                           onChanged: () =>
-                              setState(() => _bookings = Api.getBookings()),
+                              setState(() { _bookings = Api.getBookings(); }),
                         ),
                       )),
               ],
@@ -187,7 +187,7 @@ class BookingsScreenState extends State<BookingsScreen> {
   Widget _filterChip(String value, String label) {
     final selected = _filter == value;
     return InkWell(
-      onTap: () => setState(() => _filter = value),
+      onTap: () => setState(() { _filter = value; }),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -311,11 +311,12 @@ class _BookingCard extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Cancel booking?'),
         content: Text(b.paymentStatus == 'paid'
-            ? 'Your payment will be refunded automatically. '
-                'This is only possible within the 7-minute free cancellation '
-                'window.'
-            : 'You can cancel this pre-booking within the 7-minute free '
-                'cancellation window.'),
+            ? 'Your payment will be refunded automatically. You can cancel '
+                'up to 30 minutes before your booked time, provided the '
+                'cafeteria has not yet started preparing the meal.'
+            : 'You can cancel this pre-booking up to 30 minutes before your '
+                'booked time, provided the cafeteria has not yet started '
+                'preparing the meal.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -444,7 +445,7 @@ class _BookingCard extends StatelessWidget {
                     const SizedBox(width: 5),
                     Text(
                         'Free cancellation until '
-                        '${_hm(b.cancelBy!)} — window closes soon',
+                        '${_hm(b.cancelBy!)} — 30 min before your slot',
                         style: const TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,

@@ -78,7 +78,7 @@ class _MenuScreenState extends State<MenuScreen> {
                         icon: const Icon(Icons.clear, size: 18),
                         onPressed: () {
                           _searchController.clear();
-                          setState(() => _searchQuery = '');
+                          setState(() { _searchQuery = ''; });
                         },
                       )
                     : null,
@@ -91,7 +91,7 @@ class _MenuScreenState extends State<MenuScreen> {
                   borderSide: BorderSide.none,
                 ),
               ),
-              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+              onChanged: (v) => setState(() { _searchQuery = v.toLowerCase(); }),
             ),
           ),
           Container(
@@ -162,7 +162,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     .toList();
                 return RefreshIndicator(
                   onRefresh: () async =>
-                      setState(() => _items = Api.getMenu()),
+                      setState(() { _items = Api.getMenu(); }),
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
@@ -318,7 +318,7 @@ class _MenuScreenState extends State<MenuScreen> {
           });
         } else if (value.startsWith('cat_')) {
           final cat = value.substring(4);
-          setState(() => _categoryFilter = _categoryFilter == cat ? 'all' : cat);
+          setState(() { _categoryFilter = _categoryFilter == cat ? 'all' : cat; });
         } else {
           setState(() =>
               _quickFilter = _quickFilter == value ? 'all' : value);
@@ -475,7 +475,7 @@ class _IngredientsToggleState extends State<_IngredientsToggle> {
       children: [
         const SizedBox(height: 6),
         InkWell(
-          onTap: () => setState(() => _open = !_open),
+          onTap: () => setState(() { _open = !_open; }),
           borderRadius: BorderRadius.circular(6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -664,7 +664,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     if (picked != null) {
       // Only allow times between 9 AM and 5 PM
       if (picked.hour >= 9 && picked.hour <= 17) {
-        setState(() => _slot = picked);
+        setState(() { _slot = picked; });
       } else {
         if (mounted) {
           showAppError(context, 'Please select a time between 9 AM and 5 PM.');
@@ -688,7 +688,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
           'Insufficient credits. Please topup or choose another method.');
       return;
     }
-    setState(() => _loading = true);
+    setState(() { _loading = true; });
     try {
       final result = await Api.placeOrder(
         widget.cart.entries
@@ -718,7 +718,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     } on ApiException catch (e) {
       if (mounted) showAppError(context, e.message);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; });
     }
   }
 
@@ -931,7 +931,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   children: [
                     Checkbox(
                       value: _useOwnCup,
-                      onChanged: (v) => setState(() => _useOwnCup = v ?? false),
+                      onChanged: (v) => setState(() { _useOwnCup = v ?? false; }),
                       activeColor: KbColors.orange700,
                     ),
                     const Expanded(
@@ -1002,7 +1002,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 )
               else
                 OutlinedButton.icon(
-                  onPressed: () => setState(() => _showQR = true),
+                  onPressed: () => setState(() { _showQR = true; }),
                   icon: const Icon(Icons.qr_code_rounded),
                   label: Text('Show QR for $_method payment'),
                 ),
@@ -1081,7 +1081,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Widget _payChip(String value, String emoji, String label) {
     final selected = _method == value;
     return InkWell(
-      onTap: () => setState(() => _method = value),
+      onTap: () => setState(() { _method = value; }),
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),

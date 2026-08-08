@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'theme.dart';
 
-String npr(num v) => v.toStringAsFixed(0);
+/// Formats a price/balance in Nepali Rupees, e.g. `NRs 220`.
+String npr(num v) => 'NRs ${v.toStringAsFixed(0)}';
 
 /// Centers content and caps its width so cards don't stretch huge on web/desktop.
 class KbWidth extends StatelessWidget {
@@ -411,6 +412,98 @@ class StarRow extends StatelessWidget {
         );
       }),
     );
+  }
+}
+
+/// Renders a photo that may be a network URL, a `data:` URI, or raw base64
+/// bytes (what the app uploads). Broken or empty photos fall back to a warm
+/// placeholder instead of Flutter web's gray broken-image box.
+class KbPhoto extends StatelessWidget {
+  final String source;
+  final double height;
+  final double? width;
+  final BorderRadius? borderRadius;
+  const KbPhoto({
+    super.key,
+    required this.source,
+    this.height = 100,
+    this.width,
+    this.borderRadius,
+  });
+
+  Widget _wrap(BuildContext context, Widget child) {
+    return ClipRRect(
+      borderRadius: borderRadius ?? BorderRadius.circular(10),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _fallback(BuildContext context) {
+    return _wrap(
+      context,
+      Container(
+        color: KbColors.ivory100,
+        alignment: Alignment.center,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.no_photography_outlined,
+                size: 22, color: KbColors.inkFaint),
+            SizedBox(height: 4),
+            Text('No photo',
+                style: TextStyle(fontSize: 10, color: KbColors.inkFaint)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final src = source.trim();
+    if (src.isEmpty) return _fallback(context);
+    if (src.startsWith('data:')) {
+      try {
+        final comma = src.indexOf(',');
+        return _wrap(
+          context,
+          Image.memory(
+            base64Decode(comma >= 0 ? src.substring(comma + 1) : src),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _fallback(context),
+          ),
+        );
+      } catch (_) {
+        return _fallback(context);
+      }
+    }
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return _wrap(
+        context,
+        Image.network(
+          src,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(context),
+        ),
+      );
+    }
+    // Raw base64 bytes (what the app uploads for feedback photos).
+    try {
+      return _wrap(
+        context,
+        Image.memory(
+          base64Decode(src),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(context),
+        ),
+      );
+    } catch (_) {
+      return _fallback(context);
+    }
   }
 }
 

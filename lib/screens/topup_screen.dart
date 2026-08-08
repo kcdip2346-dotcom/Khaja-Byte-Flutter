@@ -43,7 +43,7 @@ class _TopupScreenState extends State<TopupScreen> {
       showSnack(context, 'Minimum topup is NRs 100.', error: true);
       return;
     }
-    setState(() => _toppingUp = true);
+    setState(() { _toppingUp = true; });
     try {
       final res = await Api.topupWallet(amount, _selectedMethod);
       if (!mounted) return;
@@ -51,12 +51,12 @@ class _TopupScreenState extends State<TopupScreen> {
           context,
           'Topup successful! ${npr(amount)} added to credits.'
           '${res['txn_ref'] != null ? ' Ref: ${res['txn_ref']}' : ''}');
-      setState(() => _credits = Api.getCredits());
+      setState(() { _credits = Api.getCredits(); });
       widget.onBalanceChanged?.call();
     } on ApiException catch (e) {
       if (mounted) showSnack(context, e.message, error: true);
     } finally {
-      if (mounted) setState(() => _toppingUp = false);
+      if (mounted) setState(() { _toppingUp = false; });
     }
   }
 
@@ -139,9 +139,11 @@ class _TopupScreenState extends State<TopupScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('रू',
+                          const Text('NRs',
                               style: TextStyle(
-                                  color: Colors.white70, fontSize: 18)),
+                                  color: Colors.white70,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700)),
                           const SizedBox(width: 4),
                           Text(
                             balance == 0 && snap.connectionState != ConnectionState.done
@@ -192,7 +194,7 @@ class _TopupScreenState extends State<TopupScreen> {
                                         ? KbColors.orange600
                                         : KbColors.ivory200),
                               ),
-                              child: Text('रू $v',
+                              child: Text('NRs $v',
                                   style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w800,
@@ -210,11 +212,11 @@ class _TopupScreenState extends State<TopupScreen> {
                   controller: _amount,
                   keyboardType: TextInputType.number,
                   onChanged: (_) =>
-                      setState(() => _quickAmount = 0),
+                      setState(() { _quickAmount = 0; }),
                   decoration: const InputDecoration(
                     labelText: 'Or enter custom amount',
-                    prefixText: 'रू ',
-                    hintText: 'Minimum रू 100',
+                    prefixText: 'NRs ',
+                    hintText: 'Minimum NRs 100',
                     isDense: true,
                   ),
                 ),
@@ -327,7 +329,7 @@ class _TopupScreenState extends State<TopupScreen> {
     final selected = _selectedMethod == value;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _selectedMethod = value),
+        onTap: () => setState(() { _selectedMethod = value; }),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),

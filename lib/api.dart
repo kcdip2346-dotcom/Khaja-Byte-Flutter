@@ -187,8 +187,9 @@ class Booking {
             : null,
       );
 
-  /// A pre-order may be cancelled only while it is pending/confirmed AND the
-  /// 7-minute free cancellation window is still open (Khājā Byte policy).
+  /// A pre-order may be cancelled only while it is pending/confirmed AND up to
+  /// 30 minutes before the booked time slot — before the kitchen starts
+  /// preparing the food (Khājā Byte policy).
   bool get cancellable =>
       (status == 'pending' || status == 'confirmed') &&
       cancelBy != null &&
@@ -434,7 +435,11 @@ class Api {
         defaultValue: kIsWeb ? '127.0.0.1' : '10.0.2.2');
     const isDefault = host == '127.0.0.1' || host == '10.0.2.2';
     const scheme = isDefault ? 'http' : 'https';
-    const port = isDefault ? ':5000' : '';
+    // macOS AirPlay uses port 5000; override with
+    // --dart-define=API_PORT=5001 when running locally.
+    const port = isDefault
+        ? ':${String.fromEnvironment('API_PORT', defaultValue: '5000')}'
+        : '';
     return '$scheme://$host$port';
   }
 
@@ -630,7 +635,10 @@ class Api {
   }
 
   static Future<List<Map<String, dynamic>>> getCreditsTransactions() async {
-    return (await _get('/api/admin/credits-transactions')) as List<Map<String, dynamic>>;
+    final d = await _get('/api/admin/credits-transactions');
+    return (d as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
   }
 
   static Future<Map<String, dynamic>> getNotifications() async {

@@ -60,15 +60,16 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
 
           final totalCreditsTopup = creditsTxns
               .where((t) =>
-                  (t['type'] as String).contains('topup') &&
-                  (t['amount'] as num) > 0)
-              .fold<double>(0, (a, t) => a + (t['amount'] as num).toDouble());
+                  ((t['type'] as String?) ?? '').contains('topup') &&
+                  ((t['amount'] as num?) ?? 0) > 0)
+              .fold<double>(0, (a, t) => a + ((t['amount'] as num?) ?? 0).toDouble());
 
           final totalCreditsSpent = creditsTxns
               .where((t) =>
-                  (t['amount'] as num) < 0 ||
-                  (t['type'] as String).contains('deduct'))
-              .fold<double>(0, (a, t) => a + (t['amount'] as num).toDouble().abs());
+                  ((t['amount'] as num?) ?? 0) < 0 ||
+                  ((t['type'] as String?) ?? '').contains('deduct'))
+              .fold<double>(0, (a, t) =>
+                  a + ((t['amount'] as num?) ?? 0).toDouble().abs());
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -154,28 +155,28 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: (t['amount'] as num) > 0
+                          color: ((t['amount'] as num?) ?? 0) > 0
                               ? KbColors.greenBg
                               : KbColors.redBg,
                           borderRadius: BorderRadius.circular(11),
                         ),
                         alignment: Alignment.center,
                         child: Text(
-                            (t['amount'] as num) > 0 ? '⬆️' : '⬇️',
+                            ((t['amount'] as num?) ?? 0) > 0 ? '⬆️' : '⬇️',
                             style: const TextStyle(fontSize: 19)),
                       ),
                       title: Text('${t['type']}'.replaceAll('_', ' ').toUpperCase(),
                           style: const TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700)),
-                      subtitle: Text('${t['uname'] ?? ''} · ${t['createdAt']}',
+                      subtitle: Text('${t['uname'] ?? ''} · ${t['created_at']}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 11)),
                       trailing: Text(
-                          '${(t['amount'] as num) > 0 ? '+' : '-'}${npr((t['amount'] as num).toDouble().abs())}',
+                          '${((t['amount'] as num?) ?? 0) > 0 ? '+' : '-'}${npr(((t['amount'] as num?) ?? 0).toDouble().abs())}',
                           style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              color: (t['amount'] as num) > 0
+                              color: ((t['amount'] as num?) ?? 0) > 0
                                   ? KbColors.green
                                   : KbColors.red)),
                     ),

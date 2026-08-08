@@ -70,7 +70,7 @@ class _StaffShellState extends State<StaffShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) => setState(() { _index = i; }),
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.storefront_outlined),
@@ -115,7 +115,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     _data = Api.getStaffToday();
     // Live refresh so queue times & statuses stay current
     _liveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted) setState(() => _data = Api.getStaffToday());
+      if (mounted) setState(() { _data = Api.getStaffToday(); });
     });
   }
 
@@ -130,7 +130,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async =>
-            setState(() => _data = Api.getStaffToday()),
+            setState(() { _data = Api.getStaffToday(); }),
         child: FutureBuilder<Map<String, dynamic>>(
           future: _data,
           builder: (context, snap) {

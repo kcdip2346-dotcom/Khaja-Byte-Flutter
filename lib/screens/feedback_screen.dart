@@ -235,16 +235,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   ),
                   if (_photoPath != null) ...[
                     const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.memory(
-                        base64Decode(_photoPath!),
-                        height: 120,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            const SizedBox(height: 120),
-                      ),
-                    ),
+                    KbPhoto(source: _photoPath!, height: 120),
                   ],
                   const SizedBox(height: 12),
                   ElevatedButton(
@@ -307,10 +298,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                         fontSize: 13, height: 1.5)),
                                 if (f.photo.isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(f.photo, height: 100, fit: BoxFit.cover),
-                                  ),
+                                  KbPhoto(source: f.photo, height: 100),
                                 ],
                                 const SizedBox(height: 6),
                                 Text(f.createdAt,

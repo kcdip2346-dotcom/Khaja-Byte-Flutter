@@ -434,7 +434,7 @@ class _BookingCard extends StatelessWidget {
                 queueWait: b.queueWait,
                 prepTime: b.prepTime,
                 totalTime: b.totalTime,
-                start: kbUtcToLocal(b.createdAt),
+                start: kbSlotLocal(b.bookingDate, b.timeSlot),
               ),
               const SizedBox(height: 6),
               if (b.cancellable)

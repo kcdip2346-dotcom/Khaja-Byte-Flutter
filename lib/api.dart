@@ -11,6 +11,20 @@ DateTime? kbUtcToLocal(String s) {
   return t?.toLocal();
 }
 
+/// Builds a device-local DateTime from the booking's date ("2026-08-08")
+/// and 12-hour slot ("12:30 PM"). Used to anchor "ready ~" estimates.
+DateTime? kbSlotLocal(String date, String slot) {
+  final m = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)').firstMatch(slot);
+  final d = DateTime.tryParse(date.trim());
+  if (m == null || d == null) return null;
+  var h = int.parse(m.group(1)!);
+  final min = int.parse(m.group(2)!);
+  final ap = m.group(3)!;
+  if (ap == 'PM' && h < 12) h += 12;
+  if (ap == 'AM' && h == 12) h = 0;
+  return DateTime(d.year, d.month, d.day, h, min);
+}
+
 class ApiException implements Exception {
   final String message;
   ApiException(this.message);

@@ -307,7 +307,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                                 prepTime: b.prepTime,
                                 totalTime: b.totalTime,
                                 compact: true,
-                                start: DateTime.tryParse(b.createdAt),
+                                start: kbSlotLocal(b.bookingDate, b.timeSlot),
                               ),
                             ],
                           ],

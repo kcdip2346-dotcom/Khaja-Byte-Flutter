@@ -298,7 +298,7 @@ class _AdminBookingCard extends StatelessWidget {
                 prepTime: b.prepTime,
                 totalTime: b.totalTime,
                 compact: true,
-                start: DateTime.tryParse(b.createdAt),
+                start: kbSlotLocal(b.bookingDate, b.timeSlot),
               ),
             ],
             const SizedBox(height: 10),

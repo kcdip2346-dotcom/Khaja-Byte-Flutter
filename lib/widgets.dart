@@ -909,6 +909,23 @@ class BookingItemThumbs extends StatelessWidget {
               ),
           ],
         ),
+        if (items.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              items
+                  .map((e) {
+                    final excl =
+                        (e['exclude'] as List?)?.whereType<String>().toList();
+                    final suffix = (excl?.isNotEmpty ?? false)
+                        ? ' (no ${excl!.join(', no ')})'
+                        : '';
+                    return '${e['name']} × ${e['qty']}$suffix';
+                  })
+                  .join(', '),
+              style: const TextStyle(fontSize: 11, color: KbColors.inkFaint),
+            ),
+          ),
       ],
     );
   }

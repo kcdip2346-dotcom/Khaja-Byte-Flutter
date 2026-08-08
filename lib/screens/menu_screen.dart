@@ -732,18 +732,12 @@ class CheckoutSheet extends StatefulWidget {
 class _CheckoutSheetState extends State<CheckoutSheet> {
   TimeOfDay _slot = const TimeOfDay(hour: 11, minute: 0);
   String _method = 'card';
-  bool _willingToDrink = false;
   bool _useOwnCup = false;
   bool _showQR = false;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
   final _customerName = TextEditingController();
   bool _loading = false;
-
-  bool get _hasColdDrink => widget.cart.keys.any((id) {
-        final item = widget.items.firstWhere((i) => i.id == id);
-        return item.category == 'Beverages';
-      });
 
   bool get _hasBeverageWithOwnCup => widget.cart.keys.any((id) {
         final item = widget.items.firstWhere((i) => i.id == id);
@@ -799,10 +793,6 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<void> _placeOrder() async {
-    if (_hasColdDrink && !_willingToDrink) {
-      showAppError(context, 'Please confirm you are willing to drink cold beverages.');
-      return;
-    }
     if (_method != 'card' && _method != 'credits' &&
         (_payName.text.trim().isEmpty || _payDetail.text.trim().isEmpty)) {
       showAppError(context, 'Please fill in your payment details.');

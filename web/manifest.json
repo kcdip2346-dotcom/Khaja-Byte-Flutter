@@ -1,11 +1,11 @@
 {
-    "name": "khaja_byte_flutter",
-    "short_name": "khaja_byte_flutter",
+    "name": "Khājā Byte",
+    "short_name": "Khājā Byte",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FEF7EF",
+    "theme_color": "#EA580C",
+    "description": "Official canteen app of ING College of Innovation and Leadership — order food, track bookings, pay with credit points.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

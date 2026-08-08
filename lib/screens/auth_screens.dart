@@ -62,7 +62,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text('🥟', style: TextStyle(fontSize: 40)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Image.asset('assets/logo.png',
+                          width: 88, height: 88, fit: BoxFit.cover),
+                    ),
                   ),
                   const SizedBox(height: 18),
                   const Text('Khājā Byte',
@@ -153,24 +157,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: KbColors.orange200,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Column(
+                    child: Column(
                       children: [
-                        Text('Demo accounts',
+                        const Text('Demo accounts — one-tap login',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12.5,
                                 color: KbColors.orange900)),
-                        SizedBox(height: 6),
-                        Text(
-                          'Admin · admin@ingcollege.edu.np / admin123\n'
-                          'Staff · staff@ingcollege.edu.np / staff123\n'
-                          'Student · student@ingcollege.edu.np / student123',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              color: KbColors.orange900,
-                              height: 1.7),
-                        ),
+                        const SizedBox(height: 8),
+                        _DemoLoginButton(
+                            label: '👨‍🎓 Student',
+                            email: 'student@ingcollege.edu.np',
+                            password: 'student123',
+                            onLogin: _loginWith),
+                        const SizedBox(height: 6),
+                        _DemoLoginButton(
+                            label: '🧑‍🍳 Staff',
+                            email: 'staff@ingcollege.edu.np',
+                            password: 'staff123',
+                            onLogin: _loginWith),
+                        const SizedBox(height: 6),
+                        _DemoLoginButton(
+                            label: '🛡️ Admin',
+                            email: 'admin@ingcollege.edu.np',
+                            password: 'admin123',
+                            onLogin: _loginWith),
                       ],
                     ),
                   ),
@@ -179,6 +190,45 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _loginWith(String email, String password) async {
+    _email.text = email;
+    _password.text = password;
+    if (_formKey.currentState!.validate()) await _login();
+  }
+}
+
+class _DemoLoginButton extends StatelessWidget {
+  final String label;
+  final String email;
+  final String password;
+  final Future<void> Function(String, String) onLogin;
+  const _DemoLoginButton({
+    required this.label,
+    required this.email,
+    required this.password,
+    required this.onLogin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => onLogin(email, password),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: KbColors.orange900,
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: KbColors.orange300),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
+        ),
+        icon: const Icon(Icons.login, size: 16),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
   }

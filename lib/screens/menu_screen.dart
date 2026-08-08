@@ -16,6 +16,7 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   final Map<int, int> _cart = {};
+  final Map<int, List<String>> _excluded = {};
   late Future<List<MenuItem>> _items;
   late Future<List<Offer>> _offers;
   bool _comboAdded = false;
@@ -204,12 +205,15 @@ class _MenuScreenState extends State<MenuScreen> {
                             item: item,
                             qty: _cart[item.id] ?? 0,
                             isSpecial: _specialItemIds.contains(item.id),
+                            excluded: _excluded[item.id] ?? const [],
+                            onCustomize: () => _showIngredientPicker(item),
                             onAdd: () => setState(() => _cart[item.id] =
                                 (_cart[item.id] ?? 0) + 1),
                             onRemove: () => setState(() {
                               final q = (_cart[item.id] ?? 0) - 1;
                               if (q <= 0) {
                                 _cart.remove(item.id);
+                                _excluded.remove(item.id);
                               } else {
                                 _cart[item.id] = q;
                               }
@@ -250,11 +254,98 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       builder: (ctx) => CheckoutSheet(
         cart: _cart,
+        excluded: _excluded,
         items: items,
         subtotal: subtotal,
       ),
     );
     setState(() {});
+  }
+
+  Future<void> _showIngredientPicker(MenuItem item) async {
+    final all = item.ingredients
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (all.isEmpty) return;
+    final current = _excluded[item.id] ?? [];
+    final picked = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          void toggle(String ing) {
+            setDlgState(() {
+              if (current.contains(ing)) {
+                current.remove(ing);
+              } else {
+                current.add(ing);
+              }
+            });
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18)),
+            title: Text('Remove ingredients — ${item.name}',
+                style: const TextStyle(fontSize: 15.5)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Allergic? Select what to leave out of your order.',
+                    style: TextStyle(fontSize: 12, color: KbColors.inkSoft),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final ing in all)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(ing,
+                                style: const TextStyle(fontSize: 13)),
+                            value: current.contains(ing),
+                            activeColor: KbColors.red,
+                            onChanged: (_) => toggle(ing),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, const <String>[]),
+                  child: const Text('Reset')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, List.of(current)),
+                style: FilledButton.styleFrom(backgroundColor: KbColors.red),
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (picked.isEmpty) {
+        _excluded.remove(item.id);
+      } else {
+        _excluded[item.id] = picked;
+      }
+    });
   }
 
   Widget _buildFilterChips() {
@@ -348,12 +439,16 @@ class _ItemCard extends StatelessWidget {
   final MenuItem item;
   final int qty;
   final bool isSpecial;
+  final List<String> excluded;
+  final VoidCallback onCustomize;
   final VoidCallback onAdd;
   final VoidCallback onRemove;
   const _ItemCard({
     required this.item,
     required this.qty,
     this.isSpecial = false,
+    this.excluded = const [],
+    required this.onCustomize,
     required this.onAdd,
     required this.onRemove,
   });
@@ -431,6 +526,34 @@ class _ItemCard extends StatelessWidget {
                           color: KbColors.orange700)),
                   if (item.ingredients.isNotEmpty)
                     _IngredientsToggle(ingredients: item.ingredients),
+                  if (item.ingredients.isNotEmpty && item.available) ...[
+                    const SizedBox(height: 5),
+                    InkWell(
+                      onTap: onCustomize,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.no_food_outlined,
+                              size: 15, color: KbColors.red),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              excluded.isEmpty
+                                  ? 'Remove ingredients (allergy)'
+                                  : 'Removing: ${excluded.join(', ')}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: KbColors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -591,11 +714,13 @@ class _CartBar extends StatelessWidget {
 
 class CheckoutSheet extends StatefulWidget {
   final Map<int, int> cart;
+  final Map<int, List<String>> excluded;
   final List<MenuItem> items;
   final double subtotal;
   const CheckoutSheet({
     super.key,
     required this.cart,
+    this.excluded = const {},
     required this.items,
     required this.subtotal,
   });
@@ -692,7 +817,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     try {
       final result = await Api.placeOrder(
         widget.cart.entries
-            .map((e) => {'id': e.key, 'qty': e.value})
+            .map((e) => {
+                  'id': e.key,
+                  'qty': e.value,
+                  if ((widget.excluded[e.key] ?? const []).isNotEmpty)
+                    'exclude': widget.excluded[e.key],
+                })
             .toList(),
         _today,
         _timeForApi,
@@ -753,6 +883,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                     Builder(builder: (_) {
                       final item = widget.items
                           .firstWhere((i) => i.id == e.key);
+                      final excl = widget.excluded[e.key] ?? const <String>[];
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Row(
@@ -760,9 +891,22 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                               MainAxisAlignment.spaceBetween,
                           children: [
                             Expanded(
-                                child: Text(
-                                    '${item.image} ${item.name} × ${e.value}',
-                                    style: const TextStyle(fontSize: 13))),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                      '${item.image} ${item.name} × ${e.value}',
+                                      style: const TextStyle(fontSize: 13)),
+                                  if (excl.isNotEmpty)
+                                    Text(
+                                        '🚫 no ${excl.join(', no ')}',
+                                        style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: KbColors.red)),
+                                ],
+                              ),
+                            ),
                             Text(npr(item.price * e.value),
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700)),

@@ -434,13 +434,13 @@ class Api {
     const host = String.fromEnvironment('API_HOST',
         defaultValue: kIsWeb ? '127.0.0.1' : '10.0.2.2');
     const isDefault = host == '127.0.0.1' || host == '10.0.2.2';
-    const scheme = isDefault ? 'http' : 'https';
+    // Local/dev deployments run plain http; set API_SCHEME=https for production.
+    const scheme = String.fromEnvironment('API_SCHEME', defaultValue: 'http');
     // macOS AirPlay uses port 5000; override with
     // --dart-define=API_PORT=5001 when running locally.
-    const port = isDefault
-        ? ':${String.fromEnvironment('API_PORT', defaultValue: '5000')}'
-        : '';
-    return '$scheme://$host$port';
+    const port = String.fromEnvironment('API_PORT',
+        defaultValue: isDefault ? '5000' : '');
+    return '$scheme://$host${port.isEmpty ? '' : ':$port'}';
   }
 
   static Map<String, String> _headers({bool json = false}) => {
@@ -654,7 +654,7 @@ class Api {
   }
 
   static Future<Map<String, dynamic>> placeOrder(
-    List<Map<String, int>> items,
+    List<Map<String, dynamic>> items,
     String bookingDate,
     String timeSlot,
     String method, {

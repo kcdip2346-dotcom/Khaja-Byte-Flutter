@@ -917,8 +917,12 @@ class BookingItemThumbs extends StatelessWidget {
     final qty = it['qty'] as int? ?? 1;
     final name = (it['name'] ?? '') as String;
     final emoji = (it['image'] ?? '🍽️') as String;
+    final excl = (it['exclude'] as List?) ?? const [];
+    final exclusions = excl.map((e) => '$e').toList();
     return Tooltip(
-      message: name,
+      message: exclusions.isEmpty
+          ? name
+          : '$name\nNo ${exclusions.join(', no ')}',
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
@@ -932,6 +936,22 @@ class BookingItemThumbs extends StatelessWidget {
             ),
             child: Text(emoji, style: TextStyle(fontSize: thumbSize * 0.5)),
           ),
+          if (exclusions.isNotEmpty)
+            Positioned(
+              left: 0,
+              top: 0,
+              child: Container(
+                width: 16,
+                height: 16,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: KbColors.red,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('🚫',
+                    style: TextStyle(fontSize: 9)),
+              ),
+            ),
           if (qty > 1)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),

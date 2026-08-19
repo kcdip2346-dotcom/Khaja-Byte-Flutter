@@ -756,8 +756,11 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         final item = widget.items.firstWhere((i) => i.id == e.key);
         return s + (item.creditDeal ? item.price * e.value : 0);
       });
-  double get _creditsDue =>
-      _effectiveSubtotal - _eligibleSubtotal * _creditsDiscountPct;
+  // The deal only unlocks when the order subtotal is Rs 150+.
+  bool get _creditDealActive => _effectiveSubtotal >= MenuItem.creditDealMinPrice;
+  double get _creditDiscount =>
+      _creditDealActive ? _eligibleSubtotal * _creditsDiscountPct : 0;
+  double get _creditsDue => _effectiveSubtotal - _creditDiscount;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
   final _customerName = TextEditingController();
@@ -947,39 +950,51 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                     ],
                   ),
                   if (_method == 'credits') ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
+                    if (_creditDealActive) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Credits discount (20%)',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: KbColors.green)),
+                            Text('- ${npr(_creditDiscount)}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: KbColors.green)),
+                          ],
+                        ),
+                      ),
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Credits discount (20%)',
+                          const Text('You pay with credits',
                               style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
-                                  color: KbColors.green)),
-                          Text('- ${npr(_eligibleSubtotal * _creditsDiscountPct)}',
+                                  color: KbColors.inkSoft)),
+                          Text(npr(_creditsDue),
                               style: const TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w800,
                                   color: KbColors.green)),
                         ],
                       ),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('You pay with credits',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: KbColors.inkSoft)),
-                        Text(npr(_creditsDue),
-                            style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: KbColors.green)),
-                      ],
-                    ),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '🪙 Add ${npr(MenuItem.creditDealMinPrice - _effectiveSubtotal)} more to unlock 20% off with credits',
+                          style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: KbColors.orange800),
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -1106,11 +1121,14 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 18),
+                    Icon(_creditDealActive ? Icons.check_circle_rounded : Icons.lock_outline, color: KbColors.green, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text('Pay ${npr(_creditsDue)} from credits — 20% off (save ${npr(_eligibleSubtotal * _creditsDiscountPct)})',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green)),
+                      child: _creditDealActive
+                          ? Text('Pay ${npr(_creditsDue)} from credits — 20% off (save ${npr(_creditDiscount)})',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green))
+                          : Text('Add ${npr(MenuItem.creditDealMinPrice - _effectiveSubtotal)} more to unlock 20% off with credits',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green)),
                     ),
                   ],
                 ),
@@ -1236,10 +1254,15 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 20),
+                    Icon(_creditDealActive ? Icons.check_circle_rounded : Icons.lock_outline, color: KbColors.green, size: 20),
                     const SizedBox(width: 8),
-                    Text('Pay ${npr(_creditsDue)} from credits balance — 20% off',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Expanded(
+                      child: Text(
+                          _creditDealActive
+                              ? 'Pay ${npr(_creditsDue)} from credits balance — 20% off'
+                              : 'Add ${npr(MenuItem.creditDealMinPrice - _effectiveSubtotal)} more to unlock 20% off',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
                   ],
                 ),
               ),

@@ -734,6 +734,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   String _method = 'card';
   bool _useOwnCup = false;
   bool _showQR = false;
+  static const double _creditsDiscountPct = 0.10; // keep in sync with backend
+  double get _creditsDue => _effectiveSubtotal * (1 - _creditsDiscountPct);
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
   final _customerName = TextEditingController();
@@ -793,12 +795,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<void> _placeOrder() async {
-    if (_method != 'card' && _method != 'credits' &&
+    if (_method != 'card' && _method != 'credits' && _method != 'cash' &&
         (_payName.text.trim().isEmpty || _payDetail.text.trim().isEmpty)) {
       showAppError(context, 'Please fill in your payment details.');
       return;
     }
-    if (_method == 'credits' && _creditBalance < _effectiveSubtotal) {
+    if (_method == 'credits' && _creditBalance < _creditsDue) {
       showAppError(context,
           'Insufficient credits. Please topup or choose another method.');
       return;
@@ -820,7 +822,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         paymentName: _payName.text.trim(),
         paymentDetail: _payDetail.text.trim(),
         useOwnCup: _useOwnCup,
-        useWallet: _method == 'credits' ? _effectiveSubtotal : 0,
+        useWallet: _method == 'credits' ? _creditsDue : 0,
         customerName: _customerName.text.trim().isNotEmpty
             ? _customerName.text.trim()
             : null,
@@ -832,7 +834,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       final prepTime = result['prep_time'] as int? ?? 15;
       showSnack(
         context,
-        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${creditsUsed > 0 ? ' · ${npr(creditsUsed)} paid from credits' : ''}',
+        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${creditsUsed > 0 ? ' · ${npr(creditsUsed)} paid from credits (10% off)' : ''}',
       );
       setState(() {});
     } on ApiException catch (e) {
@@ -917,6 +919,41 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                               color: KbColors.orange700)),
                     ],
                   ),
+                  if (_method == 'credits') ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Credits discount (10%)',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: KbColors.green)),
+                          Text('- ${npr(_effectiveSubtotal - _creditsDue)}',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: KbColors.green)),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('You pay with credits',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: KbColors.inkSoft)),
+                        Text(npr(_creditsDue),
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: KbColors.green)),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -987,6 +1024,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 _payChip('esewa', '🟢', 'eSewa'),
                 _payChip('khalti', '🔴', 'Khalti'),
                 _payChip('credits', '🪙', 'Credits'),
+                _payChip('cash', '💵', 'Cash'),
               ],
             ),
             const SizedBox(height: 14),
@@ -1010,7 +1048,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   ],
                 ),
               ),
-            if (_method == 'credits' && _creditBalance > 0 && _creditBalance < _effectiveSubtotal)
+            if (_method == 'credits' && _creditBalance > 0 && _creditBalance < _creditsDue)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -1030,7 +1068,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   ],
                 ),
               ),
-            if (_method == 'credits' && _creditBalance >= _effectiveSubtotal)
+            if (_method == 'credits' && _creditBalance >= _creditsDue)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -1044,7 +1082,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                     const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text('Pay ${npr(_effectiveSubtotal)} from credits (${_creditBalance.toInt()} available)',
+                      child: Text('Pay ${npr(_creditsDue)} from credits — 10% off (save ${npr(_effectiveSubtotal - _creditsDue)})',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green)),
                     ),
                   ],
@@ -1173,7 +1211,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   children: [
                     const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 20),
                     const SizedBox(width: 8),
-                    Text('Pay ${npr(_effectiveSubtotal)} from credits balance',
+                    Text('Pay ${npr(_creditsDue)} from credits balance — 10% off',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   ],
                 ),
@@ -1204,7 +1242,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       height: 22,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2.5))
-                  : Text('✅ Place Order & Pay · ${npr(_effectiveSubtotal)}'),
+                  : Text('✅ Place Order & Pay · ${npr(_method == 'credits' ? _creditsDue : widget.subtotal)}'),
             ),
           ],
         ),

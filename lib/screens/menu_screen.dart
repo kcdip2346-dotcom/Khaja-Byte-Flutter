@@ -507,6 +507,23 @@ class _ItemCard extends StatelessWidget {
                                   fontWeight: FontWeight.w800,
                                   color: KbColors.orange800)),
                         ),
+                      if (item.creditDeal)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: KbColors.greenBg,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFBFE8CF)),
+                            ),
+                            child: const Text('🪙 CREDIT DEAL',
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: KbColors.green)),
+                          ),
+                        ),
                       const SizedBox(width: 6),
                       if (!item.available)
                         const StatusBadge('Sold out'),
@@ -733,9 +750,14 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   TimeOfDay _slot = const TimeOfDay(hour: 11, minute: 0);
   String _method = 'card';
   bool _useOwnCup = false;
-  bool _showQR = false;
-  static const double _creditsDiscountPct = 0.10; // keep in sync with backend
-  double get _creditsDue => _effectiveSubtotal * (1 - _creditsDiscountPct);
+  bool _scanned = false;
+  static const double _creditsDiscountPct = 0.20; // keep in sync with backend
+  double get _eligibleSubtotal => widget.cart.entries.fold<double>(0, (s, e) {
+        final item = widget.items.firstWhere((i) => i.id == e.key);
+        return s + (item.creditDeal ? item.price * e.value : 0);
+      });
+  double get _creditsDue =>
+      _effectiveSubtotal - _eligibleSubtotal * _creditsDiscountPct;
   final _payName = TextEditingController();
   final _payDetail = TextEditingController();
   final _customerName = TextEditingController();
@@ -795,9 +817,14 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<void> _placeOrder() async {
-    if (_method != 'card' && _method != 'credits' && _method != 'cash' &&
+    final isWallet = _method == 'esewa' || _method == 'khalti';
+    if (_method == 'card' &&
         (_payName.text.trim().isEmpty || _payDetail.text.trim().isEmpty)) {
-      showAppError(context, 'Please fill in your payment details.');
+      showAppError(context, 'Please fill in your card details.');
+      return;
+    }
+    if (isWallet && !_scanned) {
+      showAppError(context, 'Please scan the QR first to verify payment.');
       return;
     }
     if (_method == 'credits' && _creditBalance < _creditsDue) {
@@ -819,8 +846,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         _today,
         _timeForApi,
         _method,
-        paymentName: _payName.text.trim(),
-        paymentDetail: _payDetail.text.trim(),
+        paymentName: isWallet ? '$_method pay' : _payName.text.trim(),
+        paymentDetail: isWallet ? 'scanned via QR' : _payDetail.text.trim(),
         useOwnCup: _useOwnCup,
         useWallet: _method == 'credits' ? _creditsDue : 0,
         customerName: _customerName.text.trim().isNotEmpty
@@ -834,7 +861,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       final prepTime = result['prep_time'] as int? ?? 15;
       showSnack(
         context,
-        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${creditsUsed > 0 ? ' · ${npr(creditsUsed)} paid from credits (10% off)' : ''}',
+        'Order placed! ${kbRef(result['booking_id'] as int)} · Prep: ${prepTime}min · Queue: ${queueWait}min${creditsUsed > 0 ? ' · ${npr(creditsUsed)} paid from credits (20% off)' : ''}',
       );
       setState(() {});
     } on ApiException catch (e) {
@@ -925,12 +952,12 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Credits discount (10%)',
+                          const Text('Credits discount (20%)',
                               style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   color: KbColors.green)),
-                          Text('- ${npr(_effectiveSubtotal - _creditsDue)}',
+                          Text('- ${npr(_eligibleSubtotal * _creditsDiscountPct)}',
                               style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
@@ -1082,7 +1109,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                     const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text('Pay ${npr(_creditsDue)} from credits — 10% off (save ${npr(_effectiveSubtotal - _creditsDue)})',
+                      child: Text('Pay ${npr(_creditsDue)} from credits — 20% off (save ${npr(_eligibleSubtotal * _creditsDiscountPct)})',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KbColors.green)),
                     ),
                   ],
@@ -1129,74 +1156,74 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 ),
               ),
             if (_hasBeverageWithOwnCup) const SizedBox(height: 14),
-            if (_method != 'card' && _method != 'credits') ...[
-              if (_showQR)
+            if (_method == 'cash') ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KbColors.ivory100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: KbColors.orange300),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.payments_outlined,
+                        color: KbColors.orange800, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                          '💵 Pay in cash at the canteen counter when you pick up your order.',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 12.5)),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (_method != 'card' && _method != 'credits') ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final val = await Navigator.of(context).push<String>(
+                    MaterialPageRoute(builder: (_) => const _QrScanPage()),
+                  );
+                  if (val != null && mounted) {
+                    setState(() { _scanned = true; });
+                  }
+                },
+                icon: const Icon(Icons.qr_code_scanner_rounded),
+                label: Text(_scanned
+                    ? 'QR scanned — scan again?'
+                    : '📷 Scan canteen QR to pay via $_method'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  backgroundColor: KbColors.orange200,
+                  foregroundColor: KbColors.orange800,
+                ),
+              ),
+              if (_scanned)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(top: 10),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: KbColors.orange300),
+                    color: KbColors.greenBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBFE8CF)),
                   ),
-                  child: Column(
+                  child: const Row(
                     children: [
-                      const Text('Scan this QR to pay',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 13)),
-                      const SizedBox(height: 10),
-                      Container(
-                        width: 180,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          color: Colors.black12,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.center,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.qr_code_rounded,
-                                size: 120, color: KbColors.orange800),
-                            const SizedBox(height: 4),
-                            Text('KB-PAY-${_method.toUpperCase()}',
-                                style: const TextStyle(
-                                    fontSize: 10, fontFamily: 'monospace')),
-                          ],
-                        ),
+                      Icon(Icons.verified_rounded,
+                          color: KbColors.green, size: 18),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text('Payment verified — proceed to order.',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 12)),
                       ),
-                      const SizedBox(height: 8),
-                      const Text('Show this to the canteen staff',
-                          style: TextStyle(
-                              fontSize: 11, color: KbColors.inkFaint)),
                     ],
                   ),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: () => setState(() { _showQR = true; }),
-                  icon: const Icon(Icons.qr_code_rounded),
-                  label: Text('Show QR for $_method payment'),
                 ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _payName,
-                decoration: InputDecoration(
-                  labelText: _method == 'card'
-                      ? 'Name on card'
-                      : '$_method full name',
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _payDetail,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: _method == 'card'
-                      ? 'Card number'
-                      : '$_method number (98XXXXXXXX)',
-                ),
-              ),
             ] else if (_method == 'credits') ...[
               const SizedBox(height: 14),
               Container(
@@ -1211,7 +1238,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   children: [
                     const Icon(Icons.check_circle_rounded, color: KbColors.green, size: 20),
                     const SizedBox(width: 8),
-                    Text('Pay ${npr(_creditsDue)} from credits balance — 10% off',
+                    Text('Pay ${npr(_creditsDue)} from credits balance — 20% off',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                   ],
                 ),
@@ -1253,7 +1280,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Widget _payChip(String value, String emoji, String label) {
     final selected = _method == value;
     return InkWell(
-      onTap: () => setState(() { _method = value; }),
+      onTap: () => setState(() { _method = value; _scanned = false; }),
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),

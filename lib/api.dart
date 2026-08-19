@@ -106,6 +106,11 @@ class MenuItem {
   final int prepTime;
   final int dailyQuantity;
   final String ingredients;
+  /// Price at/above which an item is a "Credit Deal" —
+  /// 20% off when paid with credit points. Keep in sync with backend
+  /// (CREDITS_DISCOUNT_MIN_PRICE in app.py).
+  static const double creditDealMinPrice = 150;
+  bool get creditDeal => price >= creditDealMinPrice;
   MenuItem({
     required this.id,
     required this.name,

@@ -211,6 +211,42 @@ class _CustomerHomeState extends State<CustomerHome> {
               },
             ),
             const SizedBox(height: 16),
+            // Credit deals section — expensive items with the points discount
+            const SectionHeader(
+                icon: Icons.savings_outlined,
+                title: 'Credit deals',
+                subtitle: '20% off when you pay with credit points'),
+            const SizedBox(height: 10),
+            FutureBuilder<List<MenuItem>>(
+              future: Api.getMenu(),
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const SizedBox(
+                    height: 140,
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: KbColors.orange600)),
+                  );
+                }
+                final deals = (snap.data ?? [])
+                    .where((i) => i.creditDeal && i.available)
+                    .toList();
+                if (deals.isEmpty) {
+                  return const EmptyState(
+                      emoji: '🪙', text: 'No credit deals right now.');
+                }
+                return SizedBox(
+                  height: 170,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final d in deals) _dealCard(d),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
             const SectionHeader(
                 icon: Icons.bolt_outlined, title: 'Quick actions'),
             const SizedBox(height: 10),
@@ -250,6 +286,63 @@ class _CustomerHomeState extends State<CustomerHome> {
     );
   }
 
+
+  Widget _dealCard(MenuItem deal) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MenuScreen(comboName: deal.name))),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 150,
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: KbColors.greenBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFBFE8CF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('${deal.image} ',
+                    style: const TextStyle(fontSize: 20)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: KbColors.green,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('-20%',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(deal.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12.5,
+                    height: 1.25)),
+            const Spacer(),
+            Text('${npr(deal.price)} · 🪙 20% off',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: KbColors.green)),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _comboCard(MenuItem combo) {
     final colors = [
